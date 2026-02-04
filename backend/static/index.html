@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>RobBot — CV Q&A</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 920px; margin: 24px auto; padding: 0 12px; }
+    h1 { margin-bottom: 6px; }
+    .small { color: #666; font-size: 13px; }
+    .card { background: #f7f7f7; padding: 14px; border-radius: 8px; margin-top: 12px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    button { padding: 10px 12px; cursor: pointer; border: 1px solid #ddd; background: white; border-radius: 6px; }
+    button:hover { background: #fafafa; }
+    input[type="text"] { width: 100%; padding: 10px; font-size: 16px; border-radius: 6px; border: 1px solid #ddd; }
+    #pretty { background:#f5f5f5; padding:12px; border-radius:8px; white-space: pre-wrap; }
+    .warn { color: #b00020; }
+    .ok { color: #0b6b0b; }
+  </style>
+</head>
+<body>
+  <h1>Hi, I’m RobBot</h1>
+  <p class="small">
+    Ask me questions about <b>Rob Voto</b>’s experience and CV. I answer using CV content (no guessing).
+  </p>
+
+  <div class="card">
+    <b>Try these questions:</b>
+    <div class="row">
+      <button class="ex" data-q="What API experience do you have?">API experience</button>
+      <button class="ex" data-q="Have you used BPMN? Give examples.">BPMN examples</button>
+      <button class="ex" data-q="What tools have you used (Jira, Azure DevOps, Enterprise Architect)?">Tools used</button>
+      <button class="ex" data-q="What government departments or industries have you worked in?">Industries / depts</button>
+    </div>
+  </div>
+
+  <h2 style="margin-top:18px;">Ask</h2>
+  <input id="q" type="text" placeholder="Type a question…" />
+
+  <div class="row" style="justify-content: space-between;">
+    <label class="small"><input id="use_llm" type="checkbox" checked /> Use smart rewrite</label>
+    <button id="askBtn">Ask</button>
+  </div>
+
+  <h2 style="margin-top:18px;">Answer</h2>
+  <div id="pretty">(no answer yet)</div>
+  <p id="status" class="small"></p>
+
+  <script>
+    async function postJSON(url, data) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+      return await res.json();
+    }
+
+    document.querySelectorAll("button.ex").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.getElementById("q").value = btn.dataset.q;
+      });
+    });
+
+    document.getElementById("askBtn").addEventListener("click", async () => {
+      const question = document.getElementById("q").value.trim();
+      const use_llm = document.getElementById("use_llm").checked;
+
+      const pretty = document.getElementById("pretty");
+      const status = document.getElementById("status");
+      status.textContent = "";
+
+      if (!question) {
+        status.innerHTML = "<span class='warn'>Please type a question.</span>";
+        return;
+      }
+
+      pretty.textContent = "Thinking…";
+
+      const resp = await postJSON("/ask", { question, use_llm, debug: false });
+
+      if (typeof resp.answer === "string") {
+        pretty.textContent = resp.answer;
+      } else if (Array.isArray(resp.answer)) {
+        pretty.textContent = resp.answer.join("\n");
+      } else {
+        pretty.textContent = JSON.stringify(resp, null, 2);
+      }
+    });
+  </script>
+</body>
+</html>
