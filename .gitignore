@@ -1,3 +1,9 @@
+# Solution Specific
+questions.log
+backend/data/intent_log.jsonl
+backend/data/star.txt
+backend/data/cv.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
