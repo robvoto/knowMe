@@ -26,15 +26,31 @@
   <div class="card">
     <b>Try these questions:</b>
     <div class="row">
-      <button class="ex" data-q="What API experience do you have?">API experience</button>
-      <button class="ex" data-q="Have you used BPMN? Give examples.">BPMN examples</button>
-      <button class="ex" data-q="What tools have you used (Jira, Azure DevOps, Enterprise Architect)?">Tools used</button>
-      <button class="ex" data-q="What government departments or industries have you worked in?">Industries / depts</button>
+      <button class="ex" data-q="What API experience does Rob have?">API experience</button>
+      <button class="ex" data-q="Has Rob used BPMN? Give examples.">BPMN examples</button>
+      <button class="ex" data-q="What tools has Rob used (Jira, Azure DevOps, Enterprise Architect)?">Tools used</button>
+      <button class="ex" data-q="What government departments or industries has Rob worked in?">Industries / depts</button>
+      <button class="ex" data-q="Tell me about a time Rob improved a process (STAR)">STAR process example</button>
+      <button class="ex" data-q="Describe a difficult stakeholder situation and how you kept alignment (STAR)">STAR stakeholder example</button>
     </div>
   </div>
 
   <h2 style="margin-top:18px;">Ask</h2>
-  <input id="q" type="text" placeholder="Type a question…" />
+
+  <div class="small" style="margin-bottom:6px;">
+  Optional (for context only)
+  </div>
+
+  <div class="row" style="gap:8px; margin-bottom:14px;">
+    <input id="name" type="text" placeholder="Name (optional)"
+            style="flex:1; font-size:14px; padding:6px;" />
+    <input id="company" type="text" placeholder="Company (optional)"
+            style="flex:1; font-size:14px; padding:6px;" />
+  </div>
+
+  <input id="q" type="text"
+      placeholder="Type your question"
+      style="margin-top:6px;" />
 
   <div class="row" style="justify-content: space-between;">
     <label class="small"><input id="use_llm" type="checkbox" checked /> Use smart rewrite</label>
@@ -64,7 +80,8 @@
     document.getElementById("askBtn").addEventListener("click", async () => {
       const question = document.getElementById("q").value.trim();
       const use_llm = document.getElementById("use_llm").checked;
-
+      const name = document.getElementById("name").value.trim();
+      const company = document.getElementById("company").value.trim();
       const pretty = document.getElementById("pretty");
       const status = document.getElementById("status");
       status.textContent = "";
@@ -76,7 +93,7 @@
 
       pretty.textContent = "Thinking…";
 
-      const resp = await postJSON("/ask", { question, use_llm, debug: false });
+      const resp = await postJSON("/ask", { question, use_llm, debug: false, name, company });
 
       if (typeof resp.answer === "string") {
         pretty.textContent = resp.answer;

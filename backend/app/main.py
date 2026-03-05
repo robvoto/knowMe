@@ -266,7 +266,7 @@ def find_relevant_sentences(cv_text: str, question: str, limit: int | None = Non
     if limit is None:
         limit = TOP_QUESTIONS
 
-    lines = [ln.strip() for ln in cv_text.splitlines() if ln.strip()]
+    lines = [ln.rstrip() for ln in cv_text.splitlines()]
 
     kept_words = []
     for w in question.lower().split():
@@ -275,18 +275,35 @@ def find_relevant_sentences(cv_text: str, question: str, limit: int | None = Non
             kept_words.append(clean)
 
     scored = []
+    current_org = None
+
     for line in lines:
-        if len(line) < MIN_LINE_LENGTH:
+        stripped = line.strip()
+        if not stripped:
             continue
 
-        l_lower = line.lower()
+        # Detect organisation header (no dash, reasonably short)
+        if not stripped.startswith("-") and len(stripped) < 80:
+            # crude but effective: organisation names are title-like
+            current_org = stripped
+            continue
+
+        if len(stripped) < MIN_LINE_LENGTH:
+            continue
+
+        l_lower = stripped.lower()
         score = sum(1 for w in kept_words if w in l_lower)
+
         if score > 0:
-            scored.append((score, line))
+            if current_org:
+                annotated = f"[{current_org}] {stripped.lstrip('- ').strip()}"
+            else:
+                annotated = stripped.lstrip("- ").strip()
+
+            scored.append((score, annotated))
 
     scored.sort(reverse=True, key=lambda x: x[0])
     return kept_words, scored[:limit]
-
 
 def llm_rewrite_answer(question: str, context: str) -> str:
     resp = client.responses.create(
@@ -295,29 +312,66 @@ def llm_rewrite_answer(question: str, context: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You answer recruiter questions about candidate Rob Voto. "
-                    "Use ONLY the CV text provided below. "
-                    "Do not invent facts. "
-                    "If the answer is not present, say: 'I can't find that in the CV text I was given.' "
-                    "When a list is requested, list all relevant items. "
-                    "Merge duplicates. "
-                    "If technologies are historical, label them as earlier-career experience."
+                            "You answer recruiter questions about candidate Rob Voto. "
+                            "Use the CV text as the source of truth for facts. "
+                            "You may infer higher-level concepts (such as industries, domains, or sectors) "
+                            "You may infer higher-level concepts when they are clearly supported by the CV. "
+                            "Do not invent experience beyond reasonable professional inference. "
 
-                    "CRITICAL RULE — STAR OVERRIDE:\n"
-                    "If the CV TEXT contains a section starting with 'STAR EXAMPLE:', "
-                    "you MUST prioritise that STAR example over CV bullets.\n"
-                    "In that case, answer STRICTLY in STAR format with these headings:\n"
-                    "Situation:\n"
-                    "Task:\n"
-                    "Action:\n"
-                    "Result:\n"
-                    "Each section must be 1–3 concise sentences. "
-                    "Only summarise the STAR example. Do NOT repeat generic CV bullets.\n\n"
+                            "CLASSIFICATION RULE: "
+                            "You may classify known organisations or roles into higher-level categories "
+                            "(such as industries or domains) even if those categories are not explicitly listed, "
+                            "as long as the underlying organisations or roles are present in the CV. "
+                            "This applies even when the question is constrained (e.g. 'private sector industries')."
 
-                    "NON-STAR MODE:\n"
-                    "If there is NO 'STAR EXAMPLE:' section, answer using relevant CV bullets only. "
-                    "When a list is requested, list all relevant items and merge duplicates. "
-                    "If technologies are historical, label them as earlier-career experience."
+                            "ABSTRACTION RULE: "
+                            "Match the abstraction level of the answer to the abstraction level of the question. "
+                            "For high-level or abstract questions, synthesise higher-level themes or domains. "
+                            "For concrete questions, provide specific factual details from the CV. "
+
+                            "Do not invent facts. "
+                            "If the answer is not present, say exactly: "
+                            "'I can't find that in the CV text I was given.' "
+
+                           
+                            "BPMN EXAMPLE SELECTION RULE (MANDATORY): "
+                            "Before writing any BPMN examples, first identify ALL organisations in the CV "
+                            "where BPMN usage is explicitly described. "
+                            "Only these organisations may be used as anchors. "
+
+                            "Then, generate AT MOST ONE example per organisation. "
+                            "Each example MUST be anchored to a different organisation. "
+                            "Do NOT reuse the same organisation name more than once. "
+
+                            "If BPMN usage exists for fewer organisations, return fewer examples. "
+                            "Do NOT default multiple examples to the same organisation. "
+                            "Do NOT merge or generalise examples across organisations. "
+
+                            "Each example MUST follow this format: "
+                            "'- At <REAL ORGANISATION NAME>: <Concrete BPMN activity and outcome>' "
+
+                            "Do NOT include tools unless explicitly asked. "
+                            "Do NOT include generic or summary bullets."
+
+
+
+                            "DEFAULT BREVITY RULE: "
+                            "Unless the question explicitly asks for explanation or detail, "
+                            "keep answers concise and factual. "
+                          #  "Avoid introductory or concluding sentences. "
+
+                            "CRITICAL RULE — STAR OVERRIDE: "
+                            "If the CV TEXT contains a section starting with 'STAR EXAMPLE:', "
+                            "you MUST prioritise that STAR example over CV bullets. "
+                            "In that case, answer STRICTLY in STAR format with these headings: "
+                            "Situation, Task, Action, Result. "
+                            "Each section must be 1–3 concise sentences. "
+                            "Only summarise the STAR example. "
+
+                            "NON-STAR MODE: "
+                            "If there is NO 'STAR EXAMPLE:' section, answer using relevant CV bullets only. "
+                            "Merge duplicates. "
+                            "If technologies are historical, label them as earlier-career experience."
                 ),
             },
             {

@@ -24,7 +24,11 @@
     <span id="ingestStatus" class="small"></span>
   </div>
 
-  <h2 style="margin-top: 18px;">2) Ask</h2>
+  <div class="row" style="margin-bottom: 8px;">
+    <input id="name" type="text" placeholder="Your name (optional)" />
+    <input id="company" type="text" placeholder="Company (optional)" />
+  </div>
+
   <input id="q" type="text" placeholder="e.g., What API experience do you have?" />
 
   <div class="row" style="margin-top: 8px; justify-content: space-between;">
@@ -60,8 +64,11 @@
       const question = document.getElementById("q").value;
       const use_llm = document.getElementById("use_llm").checked;
       const debug = document.getElementById("debug").checked;
+      const name = document.getElementById("name").value.trim();
+      const company = document.getElementById("company").value.trim();
 
-      const resp = await postJSON("/ask", { question, use_llm, debug });
+      const resp = await postJSON("/ask", { question, use_llm, debug, name, company });      
+      
       document.getElementById("out").textContent = JSON.stringify(resp, null, 2);
     });
   </script>
