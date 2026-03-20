@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from openai import OpenAI
+from openai import BaseModel, OpenAI
 
 # ─────────────────────────
 # Globals / config
@@ -17,8 +17,8 @@ APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
 STATIC_DIR = BACKEND_DIR / "static"
 DATA_DIR = BACKEND_DIR / "data"
-CV_PATH = DATA_DIR / "cv.txt"
-STAR_PATH = DATA_DIR / "star.txt"
+CV_FILE = DATA_DIR / "cv.txt"
+STAR_FILE = DATA_DIR / "star.txt"
 
 TOP_QUESTIONS = 20
 MAX_QUESTION_CHARS = 300
@@ -54,7 +54,7 @@ STAR_TEXT = ""
 
 load_dotenv(BACKEND_DIR / ".env")
 
-INTENT_LOG_PATH = Path(BACKEND_DIR / "data/intent_log.jsonl")
+INTENT_LOG_PATH = Path(DATA_DIR / "intent_log.jsonl")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -76,6 +76,10 @@ app = FastAPI(title="knowMe API", lifespan=lifespan)
 # Helpers
 # ─────────────────────────
 
+def save_text_file(path: Path, text: str):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
 def clean_line(text: str) -> str:
     return text.lstrip("•-– ").strip()
 
@@ -86,7 +90,7 @@ def load_text_file(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
-INTENT_LOG_PATH = Path("backend/data/intent_log.jsonl")
+
 
 def log_intent_event(
     question: str,
@@ -130,8 +134,8 @@ def split_authoritative(cv_text: str):
 def load_all_data():
     global CV_AUTHORITATIVE, CV_BODY, STAR_TEXT
 
-    cv_text = load_text_file(CV_PATH)
-    STAR_TEXT = load_text_file(STAR_PATH)
+    cv_text = load_text_file(CV_FILE)
+    STAR_TEXT = load_text_file(STAR_FILE)
 
     CV_AUTHORITATIVE, CV_BODY = split_authoritative(cv_text)
 
@@ -142,19 +146,19 @@ def count_star_blocks(star_text: str) -> int:
 def startup_checkup():
     cwd = os.getcwd()
 
-    cv_path = os.path.abspath(CV_PATH)
-    star_path = os.path.abspath(STAR_PATH)
+    cv_file = os.path.abspath(CV_FILE)
+    star_file = os.path.abspath(STAR_FILE)
     log_path = os.path.abspath("questions.log")
 
-    cv_exists = os.path.exists(cv_path)
-    star_exists = os.path.exists(star_path)
+    cv_exists = os.path.exists(CV_FILE)
+    star_exists = os.path.exists(STAR_FILE)
 
     print("\n" + "=" * 60)
     print("knowMe startup checkup")
     print("=" * 60)
     print(f"CWD: {cwd}")
-    print(f"CV file:   {cv_path}  exists={cv_exists}")
-    print(f"STAR file: {star_path} exists={star_exists}")
+    print(f"CV file:   {cv_file}  exists={cv_exists}")
+    print(f"STAR file: {star_file} exists={star_exists}")
     print(f"Log file:  {log_path}")
     print("-" * 60)
 
@@ -415,9 +419,8 @@ def health():
 
 # ─────────────────────────
 # API
-# ─────────────────────────
-
-@app.post("/ingest")
+# ───────────────────────── 
+@app.post("/ingest_cv")
 def ingest(payload: dict):
     global CV_AUTHORITATIVE, CV_BODY
 
@@ -425,12 +428,31 @@ def ingest(payload: dict):
     if not text:
         return {"error": "No CV text provided"}
 
+    save_text_file(CV_FILE, text)
+
     CV_AUTHORITATIVE, CV_BODY = split_authoritative(text)
 
     return {
         "status": "CV stored",
         "authoritative_length": len(CV_AUTHORITATIVE),
         "body_length": len(CV_BODY),
+    }
+
+@app.post("/ingest_star")
+def ingest_star(payload: dict):
+    global STAR_TEXT
+
+    text = payload.get("text", "")
+    if not text:
+        return {"error": "No STAR text provided"}
+
+    save_text_file(STAR_FILE, text)
+
+    STAR_TEXT = text
+
+    return {
+        "status": "STAR stored",
+        "length": len(STAR_TEXT),
     }
 
 @app.get("/reload")

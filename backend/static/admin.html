@@ -24,6 +24,13 @@
     <span id="ingestStatus" class="small"></span>
   </div>
 
+  <h2>2) STAR text</h2>
+  <textarea id="star" placeholder="Paste your STAR examples here..."></textarea>
+  <div class="row" style="margin-top: 8px;">
+    <button id="ingestStarBtn">Ingest STAR</button>
+    <span id="starStatus" class="small"></span>
+  </div>
+
   <div class="row" style="margin-bottom: 8px;">
     <input id="name" type="text" placeholder="Your name (optional)" />
     <input id="company" type="text" placeholder="Company (optional)" />
@@ -56,7 +63,7 @@
       const text = document.getElementById("cv").value;
       const status = document.getElementById("ingestStatus");
       status.textContent = "Uploading…";
-      const resp = await postJSON("/ingest", { text });
+      const resp = await postJSON("/ingest_cv", { text });
       status.textContent = `✅ ${resp.status} (length: ${resp.length})`;
     });
 
@@ -70,6 +77,16 @@
       const resp = await postJSON("/ask", { question, use_llm, debug, name, company });      
       
       document.getElementById("out").textContent = JSON.stringify(resp, null, 2);
+    });
+  </script>
+
+  <script>
+    document.getElementById("ingestStarBtn").addEventListener("click", async () => {
+      const text = document.getElementById("star").value;
+      const status = document.getElementById("starStatus");
+      status.textContent = "Uploading…";
+      const resp = await postJSON("/ingest_star", { text });
+      status.textContent = `✅ ${resp.status} (length: ${resp.length})`;
     });
   </script>
 </body>
