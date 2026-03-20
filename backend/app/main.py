@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from contextlib import asynccontextmanager
-
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -52,7 +52,9 @@ CV_AUTHORITATIVE = ""
 CV_BODY = ""
 STAR_TEXT = ""
 
-INTENT_LOG_PATH = Path("backend/data/intent_log.jsonl")
+load_dotenv(BACKEND_DIR / ".env")
+
+INTENT_LOG_PATH = Path(BACKEND_DIR / "data/intent_log.jsonl")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
