@@ -1,0 +1,196 @@
+
+NAME: Roberto Hernan Voto
+ROLE: Senior Business Analyst / Technical Business Analyst / Scrum Master
+LOCATION: Australia
+EXPERIENCE: 20+ years in IT
+
+TOOLS (AUTHORITATIVE LIST)
+The following tools are explicitly used by Rob Voto:
+- Jira
+- Azure DevOps
+- Trello
+- Confluence
+- Enterprise Architect
+- BPMN 2.0
+- Visio
+- Miro
+- Postman
+- SQL
+- Power BI (basic)
+- AWS (solution context)
+- AI (prompt engineering and LLM-assisted analysis)
+- Draw.io
+- Java
+- Azure
+- Agile Scrum & Kanban
+- REST APIs (conceptual)
+- High-level business rules and decision logic
+
+====================================
+EMPLOYMENT HISTORY
+====================================
+
+Organisation: Department of Employment and Workplace Relations (DEWR)
+Industry: Federal Government
+role: Senior Business Analyst
+Dec 2024 – Present
+
+- Senior BA on a large-scale payments transformation and migration program for Disability Employment Services (DES), supporting transition from DES5 to DES6.
+- Analysed and modelled complex provider payment and derived-payment processes, including eligibility checks, rule sequencing, adjustments, exceptions, and system hand-offs.
+- Translated policy intent into system-ready functional definitions, covering decision logic, calculation sequencing, data mappings, and edge cases.
+- Produced BPMN 2.0 AS-IS and TO-BE process models used by policy, development, testing, and data teams to align on payment behaviour.
+- Performed SQL-based data validation and reconciliation to compare legacy and new-system payment outcomes and support defect investigation.
+- Defined detailed acceptance criteria and test scenarios to validate payment accuracy and compliance during migration.
+- Tools: Azure DevOps, Enterprise Architect, SQL, BPMN, Agile Scrum.
+
+Organisation: Australian Bureau of Statistics (ABS)
+Industry: Federal Government
+role: Senior Business Analyst
+Apr 2024 – Dec 2024
+
+- Senior BA on a national web-based business data collection and reporting platform.
+- Analysed end-to-end workflows for capturing income, expense, and inventory data from Australian businesses.
+- Designed BPMN AS-IS and TO-BE process models describing data submission, validation, processing, and downstream reporting flows.
+- Clarified interactions between the web application, validation services, APIs, and backend data stores to support development and testing.
+- Supported API definition and performed API testing and validation using Postman.
+- Used SQL extensively for data analysis, validation, and issue investigation.
+- Tools: Jira, SQL, Postman, BPMN, Agile Scrum.
+
+Organisation: NSW eHealth
+Industry: State Government
+role: Digital & Infrastructure Business Analyst / Project Coordinator
+2022 – 2023
+
+- Lead Business Analyst across major digital and infrastructure programs within NSW Health.
+- Played a key role in the transition of the NSW Health networking ecosystem to a Secure Service Edge (SSE) architecture across 15+ Local Health Districts.
+- Coordinated requirements, risks, schedules, and delivery across multiple vendors, engineers, and LHD stakeholders.
+- Acted as primary BA on NSW Ambulance initiatives, including infrastructure upgrades and operational support processes.
+- Conducted extensive BPMN 2.0 process modelling for IT Support (including P1/P2 incidents), Procurement, Finance, and operational workflows.
+- Facilitated discovery and validation workshops with eHealth IT managers and NSW Ambulance stakeholders.
+- Produced AS-IS and TO-BE process models used for stakeholder alignment, onboarding, and operational documentation.
+- Tools: Azure DevOps, Jira, BPMN, infrastructure platforms (networking, security), Agile Scrum.
+
+Organisation: Department of Health
+Industry: Federal Government
+role: Digital Business Analyst
+2021 – 2022
+
+- Digital BA on a federal aged care financial management and reporting platform supporting subsidised aged care and transition care services.
+- Analysed and defined end-to-end accounting, data capture, and reporting workflows, including provider submissions, validation, and government reporting.
+- Worked on Annual Accountability Reporting (AAR) requirements for the Transition Care Programme, covering both government and private aged-care providers.
+- Produced functional and non-functional requirements to support financial transparency, compliance, and auditability.
+- Facilitated stakeholder workshops with policy teams, delivery teams, and external providers to clarify requirements and reporting obligations.
+- Supported delivery and testing activities until the program reached approximately 75% implementation before cancellation for external reasons.
+- Tools: Azure DevOps, SQL, BPMN, Agile Scrum.
+
+Organisation: Phoenix DX
+Industry: information technology and business services industry
+role: Agile Business Analyst
+Industry: Federal Government
+2020 – 2021
+
+- Agile BA and consultant in a low-code delivery environment (OutSystems).
+- Led discovery, requirements definition, and Agile delivery for multiple client solutions.
+- Strong use of Gherkin BDD (GIVEN / WHEN / THEN) for acceptance criteria.
+- BPMN modelling for process improvement and workflow optimisation.
+- Involvement in API integrations and system-to-system workflows.
+- Tools and platforms: OutSystems, Jira, BPMN, Gherkin BDD, Postman, Agile Scrum & Kanban.
+
+Rockstar Coders
+Industry: information technology and business services industry
+roles: Business Analyst / Scrum Master / Delivery Manager
+2018 – 2020
+
+- Senior BA / SM / Delivery Manager for a US-based digital agency.
+- Worked across dozens of mobile and web products for international clients.
+- Led discovery workshops, UX definition, requirements, and delivery planning.
+- Produced BPMN and Visio process models for business process improvement.
+- Acted as primary client-facing delivery lead across multiple accounts.
+- Tools: Trello, BPMN, Visio, Miro, UX artefacts, Agile Scrum & Kanban.
+
+Organisation:Globant
+Industry: information technology and business services industry
+role: Digital Business Analyst / Consultant
+2016 – 2018
+
+- Digital BA on enterprise platforms for major global clients.
+- Worked on large-scale digital solutions for Mastercard and Google.
+- Requirements analysis, stakeholder engagement, and delivery support.
+- Involvement in web platforms, integrations, and cloud-based solutions.
+- Tools and practices included Jira, BPMN, API documentation, and cloud-based delivery environments.
+
+Organisation:Frucor Suntory
+Industry: FMCG
+role: Functional & Data Analyst
+2015 – 2016
+
+- Functional and data BA on an end-to-end order-to-cash integration program.
+- SAP and EDI-based integrations with major customers (e.g. Woolworths, Domino’s).
+- Data mapping, validation, and coordination across business and technical teams.
+- Tools: SAP, EDI, SQL, data mapping specifications.
+
+Organisation: Adaptra Consulting
+Industry: information technology and business services industry
+role: Business Analyst
+2010 – 2012
+
+- Business Analyst and Functional Consultant specialising in Guidewire platforms.
+- Configuration, requirements definition, and pre-sales solution design.
+- Involvement in insurance system integrations and solution architecture.
+- Tools: Guidewire, BPMN, integration specifications.
+
+Organisation: NSW Department of Education
+Industry: State Government
+role: Analyst Developer
+2007 – 2010
+
+- Senior Analyst Developer in education systems.
+- Java development and enterprise system integration.
+- Extensive work on SOAP / SOA integrations and backend services.
+- Tools: Java, SOAP/SOA, SQL, enterprise integration frameworks.
+
+Organisation: NSW Department of Education
+Industry: State Government
+role: Technical & Functional Business Analyst
+2012 – 2015
+
+- Technical and Functional BA on large-scale, state-wide education platforms supporting 2,200+ NSW public schools.
+- Worked on major programs including LMBR and ICC, involving system integration, ETL, and large-scale data migration.
+- Performed heavy SQL-based analysis to define data mappings, transformation rules, and validation logic.
+- Modelled BPMN processes and integration workflows covering student enrolment, residency and visa management, and sensitive legal and family information.
+- Supported multi-million-dollar enterprise programs involving multiple legacy systems and vendors.
+- Tools: SQL, BPMN, ETL tooling, enterprise education platforms.
+
+Organisation: Mastercard (Argentina)
+Industry: Finance
+role: Analyst Developer
+2002 – 2006
+
+- Technical BA and developer on enterprise financial systems.
+- Development and integration of Mastercard client-facing platforms.
+- Java / J2EE development and middleware integration.
+- Tools: Java/J2EE, middleware, SQL.
+
+Organisation: Movistar
+Industry: Telecommunication
+role: Analyst Developer
+2002 – 2004
+
+- Analyst Developer role in telecommunications systems.
+- Tools: Java, enterprise telecom platforms.
+
+====================================
+EDUCATION
+====================================
+
+- Bachelor’s Degree in Information Technology (completed)
+
+====================================
+CERTIFICATIONS
+====================================
+
+- Certified Scrum Master (CSM)
+- Certified Associate in Project Management (CAPM)
+- BPMN 2.0 Business Process Modelling
+- OutSystems Associate Reactive Developer
+- Guidewire Policy & ClaimCenter Certification (2010)

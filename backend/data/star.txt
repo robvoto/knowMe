@@ -1,0 +1,202 @@
+====================================
+AUTHORITATIVE EXPERIENCE EXAMPLES (STAR)
+====================================
+
+------------------------------------
+SKILL: BPMN / PROCESS MODELLING
+------------------------------------
+
+EXAMPLE BPMN-01
+Organisation: NSW eHealth
+Period: 2022–2023
+Context: NSW Ambulance IT Support (P1 / P2 incidents)
+
+Situation:
+NSW Ambulance and eHealth IT teams lacked a clear, shared understanding of how P1 and P2 incidents were handled, escalated, and reviewed.
+
+Task:
+Analyse the existing support process and define improved workflows aligned to operational needs.
+
+Action:
+Facilitated workshops with eHealth IT managers and NSW Ambulance stakeholders.
+Created BPMN 2.0 AS-IS and TO-BE diagrams covering incident intake, escalation, resolution, and post-incident reporting.
+Used BPMN diagrams as visual aids during workshops to validate understanding and drive agreement.
+
+Result:
+Improved clarity across teams, streamlined incident handling, and produced onboarding-ready documentation used by new team members.
+
+
+EXAMPLE BPMN-02
+Organisation: Australian Bureau of Statistics (ABS)
+Period: 2024
+Context: Accounting Software Integration
+
+Situation:
+ABS required clear documentation of end-to-end accounting processes and system interactions to support development and integration.
+
+Task:
+Document current and future-state accounting workflows, including interactions with upstream and downstream systems.
+
+Action:
+Analysed existing processes and system interactions.
+Created BPMN AS-IS and TO-BE diagrams capturing data inputs, validations, processing steps, and outputs.
+Engaged stakeholders across business, IT, and operations to validate models.
+
+Result:
+Produced clear, shared documentation that improved understanding of system behaviour and supported successful delivery.
+
+
+EXAMPLE BPMN-03
+Organisation: Department of Employment and Workplace Relations (DEWR)
+Period: 2024–Present
+Context: Payments Transformation
+
+Situation:
+Complex provider payment rules were being migrated to a new platform, requiring clarity on rule sequencing and exceptions.
+
+Task:
+Translate policy and existing payment behaviour into system-ready process definitions.
+
+Action:
+Created BPMN AS-IS and TO-BE models covering payment rule execution, exception handling, and system hand-offs.
+Worked closely with policy, development, testing, and data teams to validate models.
+Used BPMN to support SQL-based validation and test scenario definition.
+
+Result:
+Reduced ambiguity during build and testing and supported accurate migration of payment logic.
+
+
+EXAMPLE BPMN-04
+Organisation: Rockstar Coders (USA)
+Period: 2018–2020
+Context: University Scholarship Processes
+
+Situation:
+A U.S. university scholarship team lacked formal documentation of their complex application and selection processes.
+
+Task:
+Capture and redesign scholarship workflows to improve clarity and consistency.
+
+Action:
+Proposed adoption of BPMN 2.0 and ran an introductory session for stakeholders.
+Led workshops to capture AS-IS processes and define TO-BE improvements.
+Created and validated more than 10 detailed BPMN diagrams over a six-month period, covering applicant and administration perspectives.
+
+Result:
+Delivered comprehensive, signed-off documentation that became a long-term reference for the scholarship team.
+
+
+------------------------------------
+SKILL: AGILE DELIVERY / BDD
+------------------------------------
+
+EXAMPLE AGILE-01
+Organisation: Phoenix DX
+Period: 2020–2021
+Context: Recruitment and Job Tracking Solution (Serco)
+
+Situation:
+Serco required a recruitment and job tracking solution, and Agile delivery was new to the organisation.
+
+Task:
+Lead requirements definition and support Agile delivery from discovery to MVP.
+
+Action:
+Ran discovery workshops, documented processes, and defined the initial backlog.
+Wrote user stories with acceptance criteria using Gherkin (GIVEN / WHEN / THEN).
+Co-led sprint planning, backlog refinement, and sprint reviews.
+Worked closely with the Product Owner to prioritise features.
+
+Result:
+Delivered a working MVP and helped Serco begin its transition to Agile delivery practices.
+
+
+------------------------------------
+SKILL: DATA / SQL / MIGRATION
+------------------------------------
+
+EXAMPLE DATA-01
+Organisation: NSW Department of Education
+Period: 2012–2015
+Context: Student Registration System (LMBR)
+
+Situation:
+The Department was modernising and centralising student enrolment systems across NSW schools.
+
+Task:
+Support data migration and integration for the new system.
+
+Action:
+Elicited data requirements and documented migration and validation rules.
+Wrote SQL and PL/SQL scripts to extract, cleanse, obfuscate, and validate data.
+Facilitated workshops with vendors, DBAs, and solution leads to clarify data structures.
+
+Result:
+Enabled accurate data migration and supported smooth transition to the new system.
+
+
+------------------------------------
+SKILL: API / INTEGRATION
+------------------------------------
+
+EXAMPLE API-01
+Organisation: Department of Employment and Workplace Relations (DEWR)
+Period: 2024–Present
+Context: Payments Platform Integration
+
+Situation:
+New payment platforms required clear definition of API behaviour and validation of integrations.
+
+Task:
+Support API definition and testing to ensure correct system behaviour.
+
+Action:
+Worked with technical teams to define API interactions and expected behaviour.
+Used Postman to test requests, responses, authentication, and error handling.
+Supported validation activities using SQL and test scenarios.
+
+Result:
+Improved confidence in integrations and reduced defects during testing.
+
+
+EXAMPLE API-02
+Organisation: NSW Department of Education
+Period: 2007–2010
+Context: Enterprise Integrations (Developer Role)
+
+Situation:
+Multiple education systems required integration through service-based architecture.
+
+Task:
+Develop and support system integrations.
+
+Action:
+Implemented SOAP and SOA-based integrations as a Java developer.
+Worked with SQL and backend systems to support data exchange.
+
+Result:
+Delivered stable integrations supporting large-scale education platforms.
+
+
+------------------------------------
+SKILL: STAKEHOLDER MANAGEMENT
+------------------------------------
+
+EXAMPLE STAKE-01
+Organisation: NSW eHealth
+Period: 2022–2023
+Context: Secure Service Edge (SSE) Migration
+
+Situation:
+Multiple vendors, Local Health Districts, and internal teams needed alignment during a large infrastructure migration.
+
+Task:
+Coordinate stakeholders and maintain alignment on goals and delivery.
+
+Action:
+Established regular communication and progress updates.
+Facilitated workshops and meetings with internal and external stakeholders.
+Maintained risk and issue registers and addressed concerns proactively.
+
+Result:
+Strong stakeholder alignment and positive feedback on communication and coordination.
