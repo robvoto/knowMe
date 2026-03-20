@@ -19,6 +19,7 @@ STATIC_DIR = BACKEND_DIR / "static"
 DATA_DIR = BACKEND_DIR / "data"
 CV_FILE = DATA_DIR / "cv.txt"
 STAR_FILE = DATA_DIR / "star.txt"
+QUESTION_LOG_FILE = DATA_DIR / "questions.log"
 
 TOP_QUESTIONS = 20
 MAX_QUESTION_CHARS = 300
@@ -84,12 +85,10 @@ def clean_line(text: str) -> str:
     return text.lstrip("•-– ").strip()
 
 
-def load_text_file(path: str) -> str:
-    if not os.path.exists(path):
+def load_text_file(path: Path) -> str:
+    if not path.exists():
         return ""
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
-
+    return path.read_text(encoding="utf-8")
 
 
 def log_intent_event(
@@ -146,9 +145,12 @@ def count_star_blocks(star_text: str) -> int:
 def startup_checkup():
     cwd = os.getcwd()
 
-    cv_file = os.path.abspath(CV_FILE)
-    star_file = os.path.abspath(STAR_FILE)
-    log_path = os.path.abspath("questions.log")
+    cv_file = CV_FILE.resolve()
+    star_file = STAR_FILE.resolve()
+    log_path = INTENT_LOG_PATH.resolve()
+
+    cv_exists = CV_FILE.exists()
+    star_exists = STAR_FILE.exists()
 
     cv_exists = os.path.exists(CV_FILE)
     star_exists = os.path.exists(STAR_FILE)
@@ -197,7 +199,8 @@ def dedupe_lines(lines: list[str]) -> list[str]:
 
 
 def log_question(question: str, name: str | None, company: str | None):
-    with open("questions.log", "a", encoding="utf-8") as f:
+    QUESTION_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with QUESTION_LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(
             f"{datetime.utcnow().isoformat()} | "
             f"name={name or '-'} | "
