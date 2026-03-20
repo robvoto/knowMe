@@ -13,6 +13,12 @@ from openai import OpenAI
 # ─────────────────────────
 # Globals / config
 # ─────────────────────────
+APP_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = APP_DIR.parent
+STATIC_DIR = BACKEND_DIR / "static"
+DATA_DIR = BACKEND_DIR / "data"
+CV_PATH = DATA_DIR / "cv.txt"
+STAR_PATH = DATA_DIR / "star.txt"
 
 TOP_QUESTIONS = 20
 MAX_QUESTION_CHARS = 300
@@ -122,8 +128,8 @@ def split_authoritative(cv_text: str):
 def load_all_data():
     global CV_AUTHORITATIVE, CV_BODY, STAR_TEXT
 
-    cv_text = load_text_file("backend/data/cv.txt")
-    STAR_TEXT = load_text_file("backend/data/star.txt")
+    cv_text = load_text_file(CV_PATH)
+    STAR_TEXT = load_text_file(STAR_PATH)
 
     CV_AUTHORITATIVE, CV_BODY = split_authoritative(cv_text)
 
@@ -134,8 +140,8 @@ def count_star_blocks(star_text: str) -> int:
 def startup_checkup():
     cwd = os.getcwd()
 
-    cv_path = os.path.abspath("backend/data/cv.txt")
-    star_path = os.path.abspath("backend/data/star.txt")
+    cv_path = os.path.abspath(CV_PATH)
+    star_path = os.path.abspath(STAR_PATH)
     log_path = os.path.abspath("questions.log")
 
     cv_exists = os.path.exists(cv_path)
@@ -387,17 +393,17 @@ def llm_rewrite_answer(question: str, context: str) -> str:
 # Static / UI
 # ─────────────────────────
 
-app.mount("/static", StaticFiles(directory="backend/static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/")
 def home():
-    return FileResponse("backend/static/index.html")
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/admin")
 def admin():
-    return FileResponse("backend/static/admin.html")
+    return FileResponse(STATIC_DIR / "admin.html")
 
 
 @app.get("/health")
