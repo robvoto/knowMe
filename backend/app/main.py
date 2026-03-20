@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from openai import BaseModel, OpenAI
+from openai import OpenAI
 
 # ─────────────────────────
 # Globals / config
@@ -37,6 +37,17 @@ IMPORTANT_SHORT_WORDS = {
     "pm"
 }
 
+SEARCH_TERM_ALIASES = {
+    "located": ["location"],
+    "location": ["located"],
+    "where": ["location"],
+    "industries": ["industry"],
+    "departments": ["department"],
+    "tools": ["tool", "technology", "technologies"],
+    "technology": ["tools"],
+    "technologies": ["tools"],
+}
+
 STAR_TRIGGER_PHRASES = [
     "star",
     "tell me about a time",
@@ -48,6 +59,7 @@ STAR_TRIGGER_PHRASES = [
 ]
 
 AUTHORITATIVE_MARKER = "AUTHORITATIVE CV INFORMATION (SOURCE OF TRUTH)"
+EMPLOYMENT_HISTORY_MARKER = "EMPLOYMENT HISTORY"
 
 CV_AUTHORITATIVE = ""
 CV_BODY = ""
@@ -112,21 +124,24 @@ def log_intent_event(
 
 def split_authoritative(cv_text: str):
     """
-    AUTHORITATIVE is extracted.
-    BODY remains the FULL CV so nothing is lost to retrieval.
+    Prefer an explicit AUTHORITATIVE marker when present.
+    Otherwise, treat the profile/tools block before employment history as authoritative.
+    BODY remains the full CV for retrieval.
     """
-    if AUTHORITATIVE_MARKER not in cv_text:
-        return "", cv_text.strip()
-
-    start = cv_text.find(AUTHORITATIVE_MARKER)
-    end = cv_text.find("====", start + 1)
-
-    if end == -1:
-        authoritative = cv_text[start:].strip()
-    else:
-        authoritative = cv_text[start:end].strip()
-
     body = cv_text.strip()
+    if not body:
+        return "", ""
+
+    authoritative_source = ""
+
+    if AUTHORITATIVE_MARKER in body:
+        authoritative_source = body.split(AUTHORITATIVE_MARKER, 1)[1].strip()
+    elif EMPLOYMENT_HISTORY_MARKER in body:
+        authoritative_source = body.split(EMPLOYMENT_HISTORY_MARKER, 1)[0].strip()
+    else:
+        return "", body
+
+    authoritative = authoritative_source.strip().strip("=\n- ")
     return authoritative, body
 
 
@@ -151,9 +166,6 @@ def startup_checkup():
 
     cv_exists = CV_FILE.exists()
     star_exists = STAR_FILE.exists()
-
-    cv_exists = os.path.exists(CV_FILE)
-    star_exists = os.path.exists(STAR_FILE)
 
     print("\n" + "=" * 60)
     print("knowMe startup checkup")
@@ -277,117 +289,191 @@ def find_relevant_star_examples(star_text: str, question: str, limit: int = 1):
     top = [b for _, b in scored[:limit]]
     return kept_words, top
 
+def build_search_terms(question: str) -> list[str]:
+    terms: list[str] = []
+
+    for w in question.lower().split():
+        clean = w.strip(string.punctuation)
+        if len(clean) <= 3 and clean not in IMPORTANT_SHORT_WORDS:
+            continue
+
+        if clean not in terms:
+            terms.append(clean)
+
+        for alias in SEARCH_TERM_ALIASES.get(clean, []):
+            if alias not in terms:
+                terms.append(alias)
+
+    return terms
+
+
+
+def is_period_line(text: str) -> bool:
+    has_digit = any(ch.isdigit() for ch in text)
+    has_range = any(token in text.lower() for token in ("-", "?", "?", "???", "to", "present"))
+    return has_digit and has_range and len(text) <= 40
+
+
+
+def extract_cv_entries(cv_text: str) -> list[str]:
+    entries: list[str] = []
+    current_org = None
+    current_section = None
+    in_employment_history = False
+
+    for raw_line in cv_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        if stripped.startswith("===") or stripped.startswith("---"):
+            continue
+
+        upper = stripped.upper()
+        if stripped.startswith("TOOLS (AUTHORITATIVE LIST)"):
+            current_section = "tools"
+            continue
+        if EMPLOYMENT_HISTORY_MARKER in upper:
+            current_section = "employment"
+            in_employment_history = True
+            current_org = None
+            continue
+        if "EDUCATION" in upper:
+            current_section = "education"
+            current_org = None
+            continue
+        if "CERTIFICATIONS" in upper:
+            current_section = "certifications"
+            current_org = None
+            continue
+
+        if stripped.startswith("Organisation:"):
+            current_org = stripped.split(":", 1)[1].strip()
+            continue
+
+        if in_employment_history and current_org and is_period_line(stripped):
+            entries.append(f"[{current_org}] Period: {stripped}")
+            continue
+
+        if in_employment_history and not stripped.startswith("-") and ":" not in stripped and len(stripped) < 80 and not is_period_line(stripped) and not any(ch.isdigit() for ch in stripped):
+            current_org = stripped
+            continue
+
+        if ":" in stripped:
+            label, value = stripped.split(":", 1)
+            label = label.strip()
+            value = value.strip()
+            label_lower = label.lower()
+
+            if not value:
+                continue
+
+            if label_lower in {"industry", "role", "roles", "context", "period"} and current_org:
+                entries.append(f"[{current_org}] {label.title()}: {value}")
+                continue
+
+            if label_lower in {"name", "role", "location", "experience"}:
+                entries.append(f"{label.upper()}: {value}")
+                continue
+
+        if stripped.startswith("-"):
+            content = clean_line(stripped)
+            if in_employment_history and current_org:
+                entries.append(f"[{current_org}] {content}")
+            elif current_section == "tools":
+                entries.append(f"Tools: {content}")
+            elif current_section == "education":
+                entries.append(f"Education: {content}")
+            elif current_section == "certifications":
+                entries.append(f"Certification: {content}")
+            else:
+                entries.append(content)
+
+    return entries
+
+
+
 def find_relevant_sentences(cv_text: str, question: str, limit: int | None = None):
     if limit is None:
         limit = TOP_QUESTIONS
 
-    lines = [ln.rstrip() for ln in cv_text.splitlines()]
-
-    kept_words = []
-    for w in question.lower().split():
-        clean = w.strip(string.punctuation)
-        if len(clean) > 3 or clean in IMPORTANT_SHORT_WORDS:
-            kept_words.append(clean)
+    entries = extract_cv_entries(cv_text)
+    kept_words = build_search_terms(question)
 
     scored = []
-    current_org = None
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-
-        # Detect organisation header (no dash, reasonably short)
-        if not stripped.startswith("-") and len(stripped) < 80:
-            # crude but effective: organisation names are title-like
-            current_org = stripped
-            continue
-
-        if len(stripped) < MIN_LINE_LENGTH:
-            continue
-
-        l_lower = stripped.lower()
-        score = sum(1 for w in kept_words if w in l_lower)
-
+    for entry in entries:
+        entry_lower = entry.lower()
+        score = sum(1 for w in kept_words if w in entry_lower)
         if score > 0:
-            if current_org:
-                annotated = f"[{current_org}] {stripped.lstrip('- ').strip()}"
-            else:
-                annotated = stripped.lstrip("- ").strip()
-
-            scored.append((score, annotated))
+            scored.append((score, entry))
 
     scored.sort(reverse=True, key=lambda x: x[0])
     return kept_words, scored[:limit]
 
+BASE_SYSTEM_PROMPT = (
+    "You answer recruiter questions about candidate Rob Voto. "
+    "Use the supplied CV text as the source of truth for facts. "
+    "You may make reasonable high-level inferences when they are clearly supported by the CV context. "
+    "Do not invent experience beyond reasonable professional inference. "
+    "If the answer is not present in the supplied text, say exactly: "
+    "'I can't find that in the CV text I was given.' "
+    "Unless the question explicitly asks for detail, keep answers concise and factual."
+)
+
+FIT_QUESTION_PROMPT = (
+    "For broad fit questions such as 'Why Rob', 'Why is Rob a good fit', or 'Summarise Rob', "
+    "start with overall fit first, then support it with a balanced mix of recent and representative experience. "
+    "Prefer recent roles first, especially DEWR and ABS when relevant, then add one or two other distinct organisations "
+    "or sectors if needed. Do not anchor the whole answer to NSW Health or any single employer unless the question is specifically about that employer."
+)
+
+STAR_SYSTEM_PROMPT = (
+    "If the CV text contains a section starting with 'STAR EXAMPLE:', prioritise that STAR example over CV bullets. "
+    "In that case, answer strictly in STAR format with these headings: Situation, Task, Action, Result. "
+    "Each section must be 1-3 concise sentences. Only summarise the supplied STAR example."
+)
+
+BPMN_SYSTEM_PROMPT = (
+    "Before writing any BPMN examples, identify all organisations in the CV where BPMN usage is explicitly described. "
+    "Only these organisations may be used as anchors. Generate at most one example per organisation, and do not reuse the same organisation name more than once. "
+    "If BPMN usage exists for fewer organisations, return fewer examples. Do not merge or generalise examples across organisations. "
+    "Each example must follow this format: '- At <REAL ORGANISATION NAME>: <Concrete BPMN activity and outcome>'. "
+    "Do not include tools unless explicitly asked. Do not include generic or summary bullets."
+)
+
+TOOLS_SYSTEM_PROMPT = (
+    "Only include tools or technologies when the question explicitly asks for them. "
+    "If technologies are historical, label them as earlier-career experience."
+)
+
+
+def build_system_prompt(question: str, context: str) -> str:
+    question_lower = question.lower()
+    system_parts = [BASE_SYSTEM_PROMPT]
+
+    if "STAR EXAMPLE:" in context:
+        system_parts.append(STAR_SYSTEM_PROMPT)
+
+    if "bpmn" in question_lower:
+        system_parts.append(BPMN_SYSTEM_PROMPT)
+
+    if any(term in question_lower for term in ("why rob", "good fit", "summarise rob", "summarize rob", "fit for", "why is rob")):
+        system_parts.append(FIT_QUESTION_PROMPT)
+
+    if any(term in question_lower for term in ("tool", "tools", "technology", "technologies", "tech stack", "stack")):
+        system_parts.append(TOOLS_SYSTEM_PROMPT)
+
+    return "\n\n".join(system_parts)
+
+
 def llm_rewrite_answer(question: str, context: str) -> str:
+    system_prompt = build_system_prompt(question, context)
     resp = client.responses.create(
         model="gpt-4.1-mini",
         input=[
             {
                 "role": "system",
-                "content": (
-                            "You answer recruiter questions about candidate Rob Voto. "
-                            "Use the CV text as the source of truth for facts. "
-                            "You may infer higher-level concepts (such as industries, domains, or sectors) "
-                            "You may infer higher-level concepts when they are clearly supported by the CV. "
-                            "Do not invent experience beyond reasonable professional inference. "
-
-                            "CLASSIFICATION RULE: "
-                            "You may classify known organisations or roles into higher-level categories "
-                            "(such as industries or domains) even if those categories are not explicitly listed, "
-                            "as long as the underlying organisations or roles are present in the CV. "
-                            "This applies even when the question is constrained (e.g. 'private sector industries')."
-
-                            "ABSTRACTION RULE: "
-                            "Match the abstraction level of the answer to the abstraction level of the question. "
-                            "For high-level or abstract questions, synthesise higher-level themes or domains. "
-                            "For concrete questions, provide specific factual details from the CV. "
-
-                            "Do not invent facts. "
-                            "If the answer is not present, say exactly: "
-                            "'I can't find that in the CV text I was given.' "
-
-                           
-                            "BPMN EXAMPLE SELECTION RULE (MANDATORY): "
-                            "Before writing any BPMN examples, first identify ALL organisations in the CV "
-                            "where BPMN usage is explicitly described. "
-                            "Only these organisations may be used as anchors. "
-
-                            "Then, generate AT MOST ONE example per organisation. "
-                            "Each example MUST be anchored to a different organisation. "
-                            "Do NOT reuse the same organisation name more than once. "
-
-                            "If BPMN usage exists for fewer organisations, return fewer examples. "
-                            "Do NOT default multiple examples to the same organisation. "
-                            "Do NOT merge or generalise examples across organisations. "
-
-                            "Each example MUST follow this format: "
-                            "'- At <REAL ORGANISATION NAME>: <Concrete BPMN activity and outcome>' "
-
-                            "Do NOT include tools unless explicitly asked. "
-                            "Do NOT include generic or summary bullets."
-
-
-
-                            "DEFAULT BREVITY RULE: "
-                            "Unless the question explicitly asks for explanation or detail, "
-                            "keep answers concise and factual. "
-                          #  "Avoid introductory or concluding sentences. "
-
-                            "CRITICAL RULE — STAR OVERRIDE: "
-                            "If the CV TEXT contains a section starting with 'STAR EXAMPLE:', "
-                            "you MUST prioritise that STAR example over CV bullets. "
-                            "In that case, answer STRICTLY in STAR format with these headings: "
-                            "Situation, Task, Action, Result. "
-                            "Each section must be 1–3 concise sentences. "
-                            "Only summarise the STAR example. "
-
-                            "NON-STAR MODE: "
-                            "If there is NO 'STAR EXAMPLE:' section, answer using relevant CV bullets only. "
-                            "Merge duplicates. "
-                            "If technologies are historical, label them as earlier-career experience."
-                ),
+                "content": system_prompt,
             },
             {
                 "role": "user",
@@ -396,7 +482,6 @@ def llm_rewrite_answer(question: str, context: str) -> str:
         ],
     )
     return resp.output_text
-
 
 # ─────────────────────────
 # Static / UI
@@ -474,6 +559,7 @@ def ask(payload: dict):
     question = payload.get("question", "").strip()
     debug = bool(payload.get("debug", False))
     use_llm = bool(payload.get("use_llm", False))
+    preview_context = bool(payload.get("preview_context", False))
 
     if len(question) > MAX_QUESTION_CHARS:
         return {"answer": f"Please shorten your question to under {MAX_QUESTION_CHARS} characters."}
@@ -481,16 +567,13 @@ def ask(payload: dict):
     if not CV_BODY:
         return {"answer": "No CV loaded yet."}
 
-    # Log question (optional name/company)
     name = payload.get("name")
     company = payload.get("company")
     log_question(question, name, company)
-    
-    # Retrieve relevant CV lines
+
     kept_words, top = find_relevant_sentences(CV_BODY, question)
     bullets = dedupe_lines([clean_line(s) for _, s in top])
 
-    # Decide whether to include STAR
     payload_forced_star = bool(payload.get("use_star", False))
     use_star = payload_forced_star or should_use_star(question)
 
@@ -498,7 +581,6 @@ def ask(payload: dict):
     if use_star and STAR_TEXT:
         _, star_blocks = find_relevant_star_examples(STAR_TEXT, question, limit=1)
 
-    # ✅ Log STAR intent decision (right here)
     reason = "no_star_trigger"
     if payload_forced_star:
         reason = "payload_use_star"
@@ -507,7 +589,6 @@ def ask(payload: dict):
 
     star_example_id = None
     if star_blocks:
-        # First line is like: "EXAMPLE 1 - ..."
         star_example_id = star_blocks[0].splitlines()[0].strip()
 
     log_intent_event(
@@ -518,44 +599,53 @@ def ask(payload: dict):
         reason=reason,
     )
 
-    # Build LLM context: AUTHORITATIVE + STAR + CV bullets
     context_parts = []
-
     if CV_AUTHORITATIVE:
         context_parts.append(CV_AUTHORITATIVE)
-
     if star_blocks:
         context_parts.append("STAR EXAMPLE:\n" + "\n\n".join(star_blocks))
-
     if bullets:
         context_parts.append("RELEVANT EXPERIENCE:\n" + "\n".join(f"- {b}" for b in bullets))
 
     full_context = "\n\n".join(context_parts)
+    system_prompt = build_system_prompt(question, full_context)
+    llm_would_run = use_llm and not preview_context
 
-    # If nothing matched at all, be honest
     if not bullets and not star_blocks:
-        return {"answer": "I couldn't find anything relevant in the CV text I was given."}
+        response = {"answer": "I couldn't find anything relevant in the CV text I was given."}
+        if debug or preview_context:
+            response.update({
+                "preview_context": full_context,
+                "system_prompt": system_prompt,
+                "llm_requested": use_llm,
+                "llm_executed": False,
+                "kept_words": kept_words,
+                "bullets": bullets,
+                "star": star_blocks,
+            })
+        return response
 
-    # Default answer (no LLM) = show bullets (and STAR if debug mode)
     final_answer = bullets
-
-    # Optional LLM rewrite
-    if use_llm:
+    if llm_would_run:
         final_answer = llm_rewrite_answer(question, full_context)
 
     print("\n===== FULL CONTEXT SENT TO LLM =====")
     print(full_context[:2000])
     print("===== END CONTEXT (first 2000 chars) =====\n")
-    
-    response: dict[str, str | list[str]] = {"answer": final_answer}
 
-    if debug:
+    response: dict[str, str | list[str] | bool] = {"answer": final_answer}
+
+    if debug or preview_context:
         response.update({
             "use_star": use_star,
             "star_found": bool(star_blocks),
             "star": star_blocks,
             "kept_words": kept_words,
             "bullets": bullets,
+            "preview_context": full_context,
+            "system_prompt": system_prompt,
+            "llm_requested": use_llm,
+            "llm_executed": llm_would_run,
         })
 
     return response
