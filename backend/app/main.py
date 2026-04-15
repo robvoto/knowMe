@@ -756,6 +756,14 @@ def find_relevant_sentences(cv_text: str, question: str, limit: int | None = Non
     kept_words = build_search_terms(question)
     intent = classify_question_intent(question)
 
+    # For industry/sector/government questions, boost org and domain entries
+    _industry_question = any(
+        term in question.lower()
+        for term in ("industry", "industries", "government", "department", "departments",
+                     "sector", "sectors", "organisation", "organizations", "worked in",
+                     "background in", "types of")
+    )
+
     scored = []
     for entry in entries:
         entry_lower = entry.lower()
@@ -765,10 +773,25 @@ def find_relevant_sentences(cv_text: str, question: str, limit: int | None = Non
         score += sum(2 for term in ("business analyst", "project delivery", "stakeholder", "data analysis") if term in entry_lower)
         if intent == "star" and any(term in entry_lower for term in ("situation", "task", "action", "result", "challenge")):
             score += 3
+        # Boost org/domain/sector entries for industry-type questions so they outrank skill bullets
+        if _industry_question and (
+            entry.startswith("Organisation:")
+            or "domain:" in entry_lower
+            or "sector:" in entry_lower
+        ):
+            score += 6
         if score > 0:
             scored.append((score, entry))
 
     scored.sort(reverse=True, key=lambda x: x[0])
+
+    # For industry questions, always include ALL org/domain entries regardless of limit
+    if _industry_question:
+        org_entries = {e for s, e in scored if e.startswith("Organisation:") or "domain:" in e.lower() or "sector:" in e.lower()}
+        top_scored = scored[:limit]
+        extra = [(s, e) for s, e in scored[limit:] if e in org_entries]
+        return kept_words, top_scored + extra
+
     return kept_words, scored[:limit]
 
 BASE_SYSTEM_PROMPT = (
@@ -782,10 +805,13 @@ BASE_SYSTEM_PROMPT = (
 )
 
 INDUSTRY_SYSTEM_PROMPT = (
-    "For questions about industries, sectors, departments, or organisations, list each organisation "
-    "from the CV context with its domain or sector. You can infer the sector from the organisation name "
-    "and any Domain labels in the context. Group by sector where it helps (e.g. Government, Healthcare, "
-    "Private/Commercial). Always name the specific organisation, not just the sector."
+    "INSTRUCTION FOR INDUSTRY/SECTOR QUESTIONS: "
+    "The CV context contains organisations from BOTH government and commercial sectors. "
+    "You MUST list every single organisation from the CV context — do not omit any. "
+    "Structure your answer with two sections: first '**Government / Public Sector**' then '**Commercial / Private Sector**'. "
+    "For each organisation, show: Organisation name — Domain/sector. "
+    "Do not stop at 5. Include all organisations from the context under the correct section. "
+    "The concise-4-points rule does NOT apply to this question type — list all organisations."
 )
 
 FIT_QUESTION_PROMPT = (
