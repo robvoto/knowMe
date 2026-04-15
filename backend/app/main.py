@@ -222,7 +222,7 @@ def save_text_file(path: Path, text: str):
     path.write_text(text, encoding="utf-8")
 
 def clean_line(text: str) -> str:
-    return text.lstrip("•-– ").strip()
+    return text.lstrip("•\u2022-–—▪▸* \t").strip()
 
 
 def normalize_question_text(question: str) -> str:
@@ -587,10 +587,27 @@ def build_search_terms(question: str) -> list[str]:
 
 
 def is_period_line(text: str) -> bool:
-    has_digit = any(ch.isdigit() for ch in text)
-    has_range = any(token in text.lower() for token in ("-", "?", "?", "???", "to", "present"))
-    return has_digit and has_range and len(text) <= 40
+    # Must contain an actual 4-digit year (19xx or 20xx) and be short
+    return bool(re.search(r'\b(19|20)\d{2}\b', text)) and len(text) <= 40
 
+
+
+_BULLET_PREFIXES = ("•", "-", "–", "▪", "▸", "*", "\u2022", "\u2013", "\u2014")
+_ROLE_MARKERS = {"analyst", "developer", "consultant", "manager", "lead", "scrum", "master",
+                  "engineer", "architect", "director", "officer", "specialist", "senior", "junior"}
+_NOT_ORG_WORDS = {"outcome", "outcomes", "note", "notes", "summary", "result", "results",
+                   "overview", "background", "context", "responsibilities"}
+_SKIP_SECTIONS = {"executive summary", "core competencies", "technical tools", "technical skills",
+                   "key achievements", "ai and innovation", "tools & technologies"}
+
+
+def _is_bullet(line: str) -> bool:
+    return any(line.startswith(p) for p in _BULLET_PREFIXES)
+
+
+def _is_role_line(line: str) -> bool:
+    """Pipe-separated role lines: Role | Period | Sector | Type"""
+    return "|" in line and any(m in line.lower() for m in _ROLE_MARKERS)
 
 
 def extract_cv_entries(cv_text: str) -> list[str]:
@@ -601,64 +618,112 @@ def extract_cv_entries(cv_text: str) -> list[str]:
 
     for raw_line in cv_text.splitlines():
         stripped = raw_line.strip()
-        # Strip markdown bold/italic/heading markers
-        stripped = stripped.strip("*#").strip()
+        stripped = stripped.strip("*#\t").strip()
         if not stripped:
             continue
-
         if stripped.startswith("===") or stripped.startswith("---"):
             continue
 
         upper = stripped.upper()
+
+        # ── Section detection ──────────────────────────────────────────────
         if stripped.startswith("TOOLS (AUTHORITATIVE LIST)"):
             current_section = "tools"
             continue
-        if EMPLOYMENT_HISTORY_MARKER in upper or "PROFESSIONAL EXPERIENCE" in upper:
+        if EMPLOYMENT_HISTORY_MARKER in upper or "PROFESSIONAL EXPERIENCE" in upper or "EMPLOYMENT HISTORY" in upper:
             current_section = "employment"
             in_employment_history = True
             current_org = None
             continue
-        if "EDUCATION" in upper:
+        if upper.startswith("EARLIER CAREER"):
+            current_section = "earlier_career"
+            in_employment_history = True
+            current_org = "Earlier Career"
+            continue
+        if "EDUCATION" in upper and len(stripped) < 30:
             current_section = "education"
             current_org = None
             continue
-        if "CERTIFICATIONS" in upper:
+        if "CERTIF" in upper and len(stripped) < 30:
             current_section = "certifications"
             current_org = None
             continue
+        if any(stripped.upper().startswith(s.upper()) for s in _SKIP_SECTIONS):
+            current_section = "skip"
+            continue
 
+        # Skip decorative or noise lines in non-employment sections
+        if current_section == "skip":
+            continue
+
+        # ── Explicit Organisation: label ───────────────────────────────────
         if stripped.startswith("Organisation:"):
             current_org = stripped.split(":", 1)[1].strip()
+            entries.append(f"Organisation: {current_org}")
             continue
 
-        if in_employment_history and current_org and is_period_line(stripped):
-            entries.append(f"[{current_org}] Period: {stripped}")
-            continue
+        # ── Employment section handling ────────────────────────────────────
+        if in_employment_history:
 
-        _role_markers = {"analyst", "developer", "consultant", "manager", "lead", "scrum", "master", "engineer", "architect", "director", "officer", "specialist"}
-        if in_employment_history and not stripped.startswith("-") and ":" not in stripped and len(stripped) < 80 and not is_period_line(stripped) and not any(ch.isdigit() for ch in stripped) and not any(m in stripped.lower() for m in _role_markers):
-            current_org = stripped
-            continue
+            # Pipe-separated role lines: extract sector and period
+            if _is_role_line(stripped):
+                parts = [p.strip() for p in stripped.split("|")]
+                for part in parts[1:]:  # skip role title (first part)
+                    part_clean = part.strip("–—").strip()
+                    if not part_clean:
+                        continue
+                    # Period detection
+                    if any(ch.isdigit() for ch in part_clean):
+                        if current_org:
+                            entries.append(f"[{current_org}] Period: {part_clean}")
+                    # Sector/type detection (no digits, meaningful length)
+                    elif len(part_clean) > 3 and part_clean.lower() not in {"contract", "permanent", "casual"}:
+                        if current_org:
+                            entries.append(f"[{current_org}] Sector: {part_clean}")
+                continue
 
+            # Period-only line
+            if current_org and is_period_line(stripped):
+                entries.append(f"[{current_org}] Period: {stripped}")
+                continue
+
+            # Org name detection: short line, no bullet, no digit, no role marker, no pipe
+            if (not _is_bullet(stripped) and ":" not in stripped and "|" not in stripped
+                    and len(stripped) < 100 and not is_period_line(stripped)
+                    and not any(ch.isdigit() for ch in stripped)
+                    and not any(m in stripped.lower() for m in _ROLE_MARKERS)
+                    and stripped.lower() not in _NOT_ORG_WORDS):
+                current_org = stripped
+                entries.append(f"Organisation: {stripped}")
+                continue
+
+            # Context/intro line (sentence describing the role, not a bullet)
+            if (not _is_bullet(stripped) and ":" not in stripped and "|" not in stripped
+                    and current_org and len(stripped) > 30 and stripped.endswith(".")
+                    and not any(m in stripped.lower() for m in _ROLE_MARKERS)):
+                entries.append(f"[{current_org}] Context: {stripped}")
+                continue
+
+        # ── Label: value lines ─────────────────────────────────────────────
         if ":" in stripped:
             label, value = stripped.split(":", 1)
             label = label.strip()
             value = value.strip()
             label_lower = label.lower()
-
             if not value:
                 continue
-
-            if label_lower in {"industry", "role", "roles", "context", "period"} and current_org:
+            if label_lower in {"industry", "domain", "sector", "role", "roles", "context", "period"} and current_org:
                 entries.append(f"[{current_org}] {label.title()}: {value}")
                 continue
-
-            if label_lower in {"name", "role", "location", "experience"}:
+            if label_lower in {"name", "location", "experience"}:
                 entries.append(f"{label.upper()}: {value}")
                 continue
 
-        if stripped.startswith("-"):
+        # ── Bullet lines ───────────────────────────────────────────────────
+        if _is_bullet(stripped):
             content = clean_line(stripped)
+            if not content or len(content) < MIN_LINE_LENGTH:
+                continue
             if in_employment_history and current_org:
                 entries.append(f"[{current_org}] {content}")
             elif current_section == "tools":
@@ -707,6 +772,13 @@ BASE_SYSTEM_PROMPT = (
     "Keep answers concise: 2-4 specific role-anchored points unless the question asks for more detail."
 )
 
+INDUSTRY_SYSTEM_PROMPT = (
+    "For questions about industries, sectors, departments, or organisations, list each organisation "
+    "from the CV context with its domain or sector. You can infer the sector from the organisation name "
+    "and any Domain labels in the context. Group by sector where it helps (e.g. Government, Healthcare, "
+    "Private/Commercial). Always name the specific organisation, not just the sector."
+)
+
 FIT_QUESTION_PROMPT = (
     "For broad fit questions such as 'Why Rob', 'Why is Rob a good fit', or 'Summarise Rob', "
     "start with overall fit first, then support it with a balanced mix of recent and representative experience. "
@@ -746,6 +818,9 @@ def build_system_prompt(question: str, context: str, detail_level: str = "concis
 
     if any(term in question_lower for term in ("why rob", "good fit", "summarise rob", "summarize rob", "fit for", "why is rob")):
         system_parts.append(FIT_QUESTION_PROMPT)
+
+    if any(term in question_lower for term in ("industry", "industries", "sector", "sectors", "department", "departments", "organisation", "organizations", "worked in", "background in")):
+        system_parts.append(INDUSTRY_SYSTEM_PROMPT)
 
     if any(term in question_lower for term in ("tool", "tools", "technology", "technologies", "tech stack", "stack")):
         system_parts.append(TOOLS_SYSTEM_PROMPT)
