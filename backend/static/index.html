@@ -196,8 +196,8 @@
       const question = document.getElementById('q').value.trim();
       const use_llm = document.getElementById('use_llm').checked;
       const detailed = document.getElementById('detailed_answer').checked ? 'detailed' : 'concise';
-      const name = document.getElementById('name').value.trim();
-      const company = document.getElementById('company').value.trim();
+      const name = document.getElementById('name').value.trim() || 'unknown';
+      const company = document.getElementById('company').value.trim() || 'unknown';
 
       if (!question) {
         setStatus('Please type a question.', true);
