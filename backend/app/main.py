@@ -640,12 +640,14 @@ def extract_cv_entries(cv_text: str) -> list[str]:
             in_employment_history = True
             current_org = "Earlier Career"
             continue
-        if "EDUCATION" in upper and len(stripped) < 30:
+        if upper.startswith("EDUCATION") and len(stripped) < 40:
             current_section = "education"
+            in_employment_history = False
             current_org = None
             continue
         if "CERTIF" in upper and len(stripped) < 30:
             current_section = "certifications"
+            in_employment_history = False
             current_org = None
             continue
         if any(stripped.upper().startswith(s.upper()) for s in _SKIP_SECTIONS):
@@ -691,7 +693,7 @@ def extract_cv_entries(cv_text: str) -> list[str]:
             if (not _is_bullet(stripped) and ":" not in stripped and "|" not in stripped
                     and len(stripped) < 100 and not is_period_line(stripped)
                     and not any(ch.isdigit() for ch in stripped)
-                    and not any(m in stripped.lower() for m in _ROLE_MARKERS)
+                    and not any(re.search(r'\b' + m + r'\b', stripped.lower()) for m in _ROLE_MARKERS)
                     and stripped.lower() not in _NOT_ORG_WORDS):
                 current_org = stripped
                 entries.append(f"Organisation: {stripped}")
@@ -734,6 +736,13 @@ def extract_cv_entries(cv_text: str) -> list[str]:
                 entries.append(f"Certification: {content}")
             else:
                 entries.append(content)
+            continue
+
+        # ── Plain lines in education / certification sections ──────────────
+        if current_section == "education" and len(stripped) >= MIN_LINE_LENGTH:
+            entries.append(f"Education: {stripped}")
+        elif current_section == "certifications" and len(stripped) >= 10:
+            entries.append(f"Certification: {stripped}")
 
     return entries
 
