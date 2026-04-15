@@ -1,93 +1,251 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>RobBot — Admin</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 920px; margin: 24px auto; padding: 0 12px; }
-    textarea { width: 100%; height: 240px; }
-    input[type="text"] { width: 100%; padding: 10px; font-size: 16px; }
-    button { padding: 10px 12px; cursor: pointer; }
-    pre { background: #f5f5f5; padding: 12px; white-space: pre-wrap; border-radius: 8px; }
-    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    .small { color: #666; font-size: 13px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KnowMe — Admin</title>
+  <link rel="stylesheet" href="/static/main-style.css">
 </head>
-<body>
-  <h1>RobBot — Admin</h1>
-  <p class="small">Paste CV text, ingest, then test questions. Debug shows matches and scoring.</p>
+<body class="admin-page">
+  <div class="admin-card">
+    <h1>KnowMe — Admin</h1>
+    <p class="small">Load CV text, ingest STAR examples, and run recruiter-style questions here.</p>
 
-  <h2>1) CV text</h2>
-  <textarea id="cv" placeholder="Paste your CV here..."></textarea>
-  <div class="row" style="margin-top: 8px;">
-    <button id="ingestBtn">Ingest CV</button>
-    <span id="ingestStatus" class="small"></span>
-  </div>
-
-  <h2>2) STAR text</h2>
-  <textarea id="star" placeholder="Paste your STAR examples here..."></textarea>
-  <div class="row" style="margin-top: 8px;">
-    <button id="ingestStarBtn">Ingest STAR</button>
-    <span id="starStatus" class="small"></span>
-  </div>
-
-  <div class="row" style="margin-bottom: 8px;">
-    <input id="name" type="text" placeholder="Your name (optional)" />
-    <input id="company" type="text" placeholder="Company (optional)" />
-  </div>
-
-  <input id="q" type="text" placeholder="e.g., What API experience do you have?" />
-
-  <div class="row" style="margin-top: 8px; justify-content: space-between;">
-    <div>
-      <label><input id="use_llm" type="checkbox" /> Use LLM rewrite</label>
-      <label style="margin-left: 12px;"><input id="debug" type="checkbox" checked /> Debug</label>
+    <div class="admin-section">
+      <h2>Reload current backend state</h2>
+      <div class="row">
+        <button id="reloadBtn">Refresh status</button>
+        <span id="reloadStatus" class="status-chip">Not loaded</span>
+      </div>
+      <div class="row">
+        <span id="cvMeta" class="status-chip">CV not loaded</span>
+        <span id="starMeta" class="status-chip">STAR not loaded</span>
+      </div>
+      <p class="small">Use this after deploying or ingesting content to confirm backend state.</p>
     </div>
-    <button id="askBtn">Ask</button>
-  </div>
 
-  <h2 style="margin-top: 18px;">Output</h2>
-  <pre id="out">(no output yet)</pre>
+    <div class="admin-section">
+      <h2>Analytics</h2>
+      <div class="row">
+        <span id="analyticsStatus" class="status-chip">Waiting</span>
+      </div>
+      <div class="admin-section">
+        <div class="section-label">Top canonical questions</div>
+        <ol id="topQuestions"></ol>
+      </div>
+      <div class="admin-section">
+        <div class="section-label">Top normalized questions</div>
+        <ol id="topNormalized"></ol>
+      </div>
+      <div class="admin-section">
+        <div class="section-label">Intent distribution</div>
+        <ol id="intentCounts"></ol>
+      </div>
+      <div class="admin-section">
+        <div class="section-label">Recent recruiter questions</div>
+        <ol id="recentQuestions"></ol>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <h2>1) Replace CV text</h2>
+      <p class="small">Only replace the full CV for major updates. This is not a daily edit area.</p>
+      <div class="row" style="margin-bottom: 10px; gap: 10px;">
+        <button id="loadCvBtn" class="secondary">Load current CV text</button>
+        <span class="status-chip">Editable only when loaded</span>
+      </div>
+      <textarea id="cv" placeholder="Paste your CV here..."></textarea>
+      <div class="row" style="margin-top: 10px;">
+        <button id="ingestBtn">Replace CV</button>
+        <span id="ingestStatus" class="status-chip">Waiting</span>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <h2>2) Ingest STAR examples</h2>
+      <p class="small">Update STAR examples when you want to refresh behavioural examples or add new use cases.</p>
+      <div class="row" style="margin-bottom: 10px; gap: 10px;">
+        <button id="loadStarBtn" class="secondary">Load current STAR text</button>
+        <span class="status-chip">Editable only when loaded</span>
+      </div>
+      <textarea id="star" placeholder="Paste your STAR examples here..."></textarea>
+      <div class="row" style="margin-top: 10px;">
+        <button id="ingestStarBtn">Ingest STAR</button>
+        <span id="starStatus" class="status-chip">Waiting</span>
+      </div>
+      <p class="small">STAR blocks are used to answer behaviour and example-based questions.</p>
+    </div>
+
+    <div class="admin-section">
+      <h2>3) Ask and inspect</h2>
+      <div class="row" style="margin-bottom: 10px;">
+        <input id="name" type="text" placeholder="Your name (optional)" />
+        <input id="company" type="text" placeholder="Company (optional)" />
+      </div>
+      <input id="q" type="text" placeholder="e.g., What API experience do you have?" />
+      <div class="row" style="margin-top: 12px; justify-content: space-between;">
+        <div class="row" style="gap: 12px; align-items: center;">
+          <label><input id="use_llm" type="checkbox" /> Use LLM rewrite</label>
+          <label><input id="debug" type="checkbox" checked /> Debug</label>
+        </div>
+        <button id="askBtn">Ask</button>
+      </div>
+      <p class="small">When debug is enabled, the response includes context and scoring details.</p>
+    </div>
+
+    <div class="admin-section">
+      <h2>Response</h2>
+      <pre id="out">(no output yet)</pre>
+      <div class="row">
+        <button id="copyOut" class="secondary">Copy response</button>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <h2>Debug output</h2>
+      <pre id="debugOut">(no debug output yet)</pre>
+    </div>
+  </div>
 
   <script>
     async function postJSON(url, data) {
       const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status}`);
+      }
       return await res.json();
     }
 
-    document.getElementById("ingestBtn").addEventListener("click", async () => {
-      const text = document.getElementById("cv").value;
-      const status = document.getElementById("ingestStatus");
-      status.textContent = "Uploading…";
-      const resp = await postJSON("/ingest_cv", { text });
-      status.textContent = `✅ ${resp.status} (length: ${resp.length})`;
+    async function loadAdminState() {
+      try {
+        const resp = await fetch('/api/admin_state');
+        const data = await resp.json();
+        document.getElementById('reloadStatus').textContent = `CV loaded=${data.cv_loaded}, STAR loaded=${data.star_loaded}`;
+        document.getElementById('cvMeta').textContent = `CV ${data.cv_loaded ? `loaded (${data.cv_length} chars)` : 'not loaded'}`;
+        document.getElementById('starMeta').textContent = `STAR ${data.star_loaded ? `loaded (${data.star_length} chars)` : 'not loaded'}`;
+        window.currentAdminState = data;
+      } catch (error) {
+        document.getElementById('reloadStatus').textContent = `Reload failed`;
+      }
+    }
+
+    async function loadCvText() {
+      await loadAdminState();
+      const data = window.currentAdminState;
+      if (data?.cv_text) {
+        document.getElementById('cv').value = data.cv_text;
+        document.getElementById('ingestStatus').textContent = 'CV text loaded';
+      }
+    }
+
+    async function loadStarText() {
+      await loadAdminState();
+      const data = window.currentAdminState;
+      if (data?.star_text) {
+        document.getElementById('star').value = data.star_text;
+        document.getElementById('starStatus').textContent = 'STAR text loaded';
+      }
+    }
+
+    async function reloadState() {
+      await loadAdminState();
+      try {
+        const analyticsResp = await fetch('/api/analytics');
+        const analytics = await analyticsResp.json();
+        document.getElementById('analyticsStatus').textContent = `Questions=${analytics.question_count}, Events=${analytics.intent_event_count}`;
+        document.getElementById('topQuestions').innerHTML = analytics.top_canonical_questions
+          .map(item => `<li>${item.question} (${item.count})</li>`)
+          .join('');
+        document.getElementById('topNormalized').innerHTML = analytics.top_normalized_questions
+          .map(item => `<li>${item.question} (${item.count})</li>`)
+          .join('');
+        document.getElementById('intentCounts').innerHTML = analytics.intent_counts
+          .map(item => `<li>${item.intent}: ${item.count}</li>`)
+          .join('');
+        document.getElementById('recentQuestions').innerHTML = analytics.recent_questions
+          .map(item => `<li>${item.ts}: ${item.question}</li>`)
+          .join('');
+      } catch (error) {
+        document.getElementById('analyticsStatus').textContent = `Analytics failed`;
+      }
+    }
+
+    async function updateStatus(elementId, message) {
+      document.getElementById(elementId).textContent = message;
+    }
+
+    document.getElementById('reloadBtn').addEventListener('click', reloadState);
+    document.getElementById('loadCvBtn').addEventListener('click', loadCvText);
+    document.getElementById('loadStarBtn').addEventListener('click', loadStarText);
+
+    document.getElementById('ingestBtn').addEventListener('click', async () => {
+      const text = document.getElementById('cv').value;
+      updateStatus('ingestStatus', 'Uploading…');
+      try {
+        const resp = await postJSON('/api/ingest_cv', { text });
+        updateStatus('ingestStatus', `✅ ${resp.status} (${resp.body_length || resp.length || 0})`);
+        reloadState();
+      } catch (error) {
+        updateStatus('ingestStatus', `Error: ${error.message}`);
+      }
     });
 
-    document.getElementById("askBtn").addEventListener("click", async () => {
-      const question = document.getElementById("q").value;
-      const use_llm = document.getElementById("use_llm").checked;
-      const debug = document.getElementById("debug").checked;
-      const name = document.getElementById("name").value.trim();
-      const company = document.getElementById("company").value.trim();
-
-      const resp = await postJSON("/ask", { question, use_llm, debug, name, company });      
-      
-      document.getElementById("out").textContent = JSON.stringify(resp, null, 2);
+    document.getElementById('ingestStarBtn').addEventListener('click', async () => {
+      const text = document.getElementById('star').value;
+      updateStatus('starStatus', 'Uploading…');
+      try {
+        const resp = await postJSON('/api/ingest_star', { text });
+        updateStatus('starStatus', `✅ ${resp.status} (${resp.star_length || resp.length || 0})`);
+        reloadState();
+      } catch (error) {
+        updateStatus('starStatus', `Error: ${error.message}`);
+      }
     });
-  </script>
 
-  <script>
-    document.getElementById("ingestStarBtn").addEventListener("click", async () => {
-      const text = document.getElementById("star").value;
-      const status = document.getElementById("starStatus");
-      status.textContent = "Uploading…";
-      const resp = await postJSON("/ingest_star", { text });
-      status.textContent = `✅ ${resp.status} (length: ${resp.length})`;
+    document.getElementById('askBtn').addEventListener('click', async () => {
+      const question = document.getElementById('q').value.trim();
+      const use_llm = document.getElementById('use_llm').checked;
+      const debug = document.getElementById('debug').checked;
+      const name = document.getElementById('name').value.trim();
+      const company = document.getElementById('company').value.trim();
+      document.getElementById('debugOut').textContent = '(waiting for response)';
+      try {
+        const resp = await postJSON('/api/ask', { question, use_llm, debug, name, company });
+        if (debug) {
+          document.getElementById('out').textContent = JSON.stringify(resp, null, 2);
+        } else {
+          document.getElementById('out').textContent = typeof resp.answer === 'string' ? resp.answer : resp.answer.join('\n');
+        }
+        document.getElementById('debugOut').textContent = JSON.stringify({
+          normalized: resp.q_norm,
+          canonical: resp.q_canonical,
+          intent: resp.intent,
+          answer_source: resp.answer_source,
+          star_found: resp.star_found,
+          system_prompt: resp.system_prompt,
+          llm_executed: resp.llm_executed,
+          llm_error: resp.llm_error,
+        }, null, 2);
+      } catch (error) {
+        document.getElementById('out').textContent = `Error: ${error.message}`;
+        document.getElementById('debugOut').textContent = '(no debug output)';
+      }
     });
+
+    document.getElementById('copyOut').addEventListener('click', async () => {
+      const text = document.getElementById('out').textContent;
+      if (text) {
+        await navigator.clipboard.writeText(text);
+      }
+    });
+
+    reloadState();
+    document.getElementById('cv').value = '';
+    document.getElementById('star').value = '';
   </script>
 </body>
 </html>

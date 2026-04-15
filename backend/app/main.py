@@ -1,5 +1,6 @@
 import string
 import os
+import re
 import json
 from pathlib import Path
 from datetime import datetime
@@ -42,10 +43,66 @@ SEARCH_TERM_ALIASES = {
     "location": ["located"],
     "where": ["location"],
     "industries": ["industry"],
+    "industry": ["industries"],
     "departments": ["department"],
-    "tools": ["tool", "technology", "technologies"],
-    "technology": ["tools"],
-    "technologies": ["tools"],
+    "department": ["departments"],
+    "tools": ["tool", "technology", "technologies", "tech stack"],
+    "tool": ["tools", "technology", "technologies"],
+    "technology": ["tools", "technologies"],
+    "technologies": ["tools", "technology"],
+    "bpmn": ["business process model and notation", "process mapping"],
+    "sql": ["structured query language", "data query"],
+    "api": ["application programming interface", "apis"],
+    "reporting": ["reports", "analytics"],
+    "stakeholder": ["stakeholders", "vendor", "vendors", "client", "clients"],
+    "delivery": ["project delivery", "delivery collaboration", "program delivery"],
+    "analysis": ["analytics", "data analysis"],
+    "agile": ["scrum", "kanban", "delivery collaboration"],
+    "requirements": ["user stories", "acceptance criteria"],
+}
+
+QUESTION_CANONICAL_PATTERNS = [
+    (re.compile(r"\b(strong fit|good fit|fit for|why (?:would|is) .+ fit)\b"), "why would <candidate> be a strong fit"),
+    (re.compile(r"\b(industry|industries|department|departments|sector|sectors)\b.*\b(work|worked|experience|background)\b"), "what industries has <candidate> worked in"),
+    (re.compile(r"\b(api|application programming interface|apis)\b"), "what api experience has <candidate> had"),
+    (re.compile(r"\b(bpmn|business process model and notation|process mapping)\b"), "has <candidate> used bpmn"),
+    (re.compile(r"\b(tools|technology|technologies|tech stack|software|platforms)\b"), "what tools has <candidate> used"),
+    (re.compile(r"\b(data analysis|sql|reporting|analytics)\b"), "what experience does <candidate> have with data analysis and sql"),
+    (re.compile(r"\b(agile|scrum|kanban|delivery collaboration|project delivery)\b"), "what experience does <candidate> have with agile and scrum"),
+    (re.compile(r"\b(user stories|requirements|acceptance criteria)\b"), "what experience does <candidate> have writing requirements and user stories"),
+    (re.compile(r"\b(stakeholder|stakeholders|vendor|vendors|client|clients)\b"), "has <candidate> worked with stakeholders or vendors"),
+    (re.compile(r"\b(testing|uat|quality assurance|qa|user acceptance)\b"), "what experience does <candidate> have in testing and quality assurance"),
+]
+
+INTENT_PATTERNS = [
+    (re.compile(r"\b(star|tell me about a time|describe a situation|give an example|scenario|challenge|result|action|task)\b"), "star"),
+    (re.compile(r"\b(bpmn|business process model and notation|process mapping)\b"), "bpmn"),
+    (re.compile(r"\b(api|application programming interface|apis)\b"), "api"),
+    (re.compile(r"\b(tools|technology|technologies|tech stack|platforms|software)\b"), "tools"),
+    (re.compile(r"\b(data analysis|sql|reporting|analytics)\b"), "data"),
+    (re.compile(r"\b(agile|scrum|kanban|delivery collaboration|project delivery)\b"), "agile"),
+    (re.compile(r"\b(user stories|requirements|acceptance criteria)\b"), "requirements"),
+    (re.compile(r"\b(stakeholder|stakeholders|vendor|vendors|client|clients)\b"), "stakeholders"),
+    (re.compile(r"\b(testing|uat|quality assurance|qa|user acceptance)\b"), "testing"),
+    (re.compile(r"\b(strong fit|good fit|why\b|fit for|summarise|summarize|why is)\b"), "fit"),
+]
+
+PHRASE_WEIGHTS = {
+    "api": 3,
+    "bpmn": 4,
+    "sql": 3,
+    "data analysis": 4,
+    "agile": 3,
+    "scrum": 3,
+    "stakeholder": 3,
+    "tools": 2,
+    "requirements": 2,
+    "user stories": 3,
+    "testing": 2,
+    "uat": 2,
+    "project delivery": 3,
+    "acceptance criteria": 3,
+    "business analyst": 4,
 }
 
 STAR_TRIGGER_PHRASES = [
@@ -56,6 +113,10 @@ STAR_TRIGGER_PHRASES = [
     "give examples",
     "example",
     "scenario",
+    "challenge",
+    "task",
+    "action",
+    "result",
 ]
 
 AUTHORITATIVE_MARKER = "AUTHORITATIVE CV INFORMATION (SOURCE OF TRUTH)"
@@ -97,10 +158,63 @@ def clean_line(text: str) -> str:
     return text.lstrip("•-– ").strip()
 
 
+def normalize_question_text(question: str) -> str:
+    """Normalize a candidate question for logging and analytics."""
+    normalized = question or ""
+    normalized = normalized.strip().lower()
+    normalized = re.sub(r"\([^)]*\)", "", normalized)
+    normalized = re.sub(r"[^\w\s]", "", normalized)
+
+    normalized = re.sub(r"\b(please|could you|would you|can you|i want to know|tell me|do you know|what is|what s)\b", "", normalized)
+    normalized = re.sub(r"\b(rob|robert|candidate|he|she|they)\b", "<candidate>", normalized)
+    normalized = re.sub(r"\b(technical\s+ba|technical\s+business\s+analyst|ba)\b", "business analyst", normalized)
+    normalized = re.sub(r"\b(senior\s+business\s+analyst\s+or\s+business\s+analyst)\b", "senior business analyst", normalized)
+    normalized = re.sub(r"\b(project delivery|delivery collaboration|program delivery)\b", "delivery", normalized)
+    normalized = re.sub(r"\b(user stories|acceptance criteria)\b", "requirements", normalized)
+
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = normalized.strip()
+
+    return normalized
+
+
+def classify_question_intent(question: str) -> str:
+    normalized = normalize_question_text(question)
+    for pattern, label in INTENT_PATTERNS:
+        if pattern.search(normalized):
+            return label
+    return "general"
+
+
+def canonical_question_text(question: str) -> str:
+    """Map normalized questions to canonical question groups for analytics."""
+    normalized = normalize_question_text(question)
+    if not normalized:
+        return ""
+
+    for pattern, canonical in QUESTION_CANONICAL_PATTERNS:
+        if pattern.search(normalized):
+            return canonical
+
+    return normalized
+
+
 def load_text_file(path: Path) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def get_file_metadata(path: Path) -> dict[str, str | int | float]:
+    if not path.exists():
+        return {"exists": False, "path": str(path), "size": 0, "modified": 0}
+    stat = path.stat()
+    return {
+        "exists": True,
+        "path": str(path),
+        "size": stat.st_size,
+        "modified": stat.st_mtime,
+    }
 
 
 def log_intent_event(
@@ -121,6 +235,85 @@ def log_intent_event(
     INTENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with INTENT_LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def parse_question_log_line(line: str) -> dict[str, str]:
+    parts = [part.strip() for part in line.split("|") if part.strip()]
+    record = {"raw": line}
+    if parts:
+        record["ts"] = parts[0]
+    for part in parts[1:]:
+        if "=" in part:
+            key, value = part.split("=", 1)
+            record[key.strip()] = value.strip()
+    if "q_norm" not in record and "q" in record:
+        record["q_norm"] = normalize_question_text(record["q"])
+    if "q_canonical" not in record and "q" in record:
+        record["q_canonical"] = canonical_question_text(record["q"])
+    return record
+
+
+def read_question_log() -> list[dict[str, str]]:
+    if not QUESTION_LOG_FILE.exists():
+        return []
+    with QUESTION_LOG_FILE.open("r", encoding="utf-8") as f:
+        return [parse_question_log_line(line) for line in f if line.strip()]
+
+
+def read_intent_log() -> list[dict]:
+    if not INTENT_LOG_PATH.exists():
+        return []
+    events = []
+    with INTENT_LOG_PATH.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return events
+
+
+def analytics_summary() -> dict:
+    question_records = read_question_log()
+    canonical_counts: dict[str, int] = {}
+    normalized_counts: dict[str, int] = {}
+    intent_counts: dict[str, int] = {}
+
+    for rec in question_records:
+        canonical = rec.get("q_canonical", "")
+        normalized = rec.get("q_norm", "")
+        intent = classify_question_intent(rec.get("q", ""))
+        intent_counts[intent] = intent_counts.get(intent, 0) + 1
+        if canonical:
+            canonical_counts[canonical] = canonical_counts.get(canonical, 0) + 1
+        if normalized:
+            normalized_counts[normalized] = normalized_counts.get(normalized, 0) + 1
+
+    top_canonical = sorted(canonical_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+    top_normalized = sorted(normalized_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+    intent_events = read_intent_log()
+
+    star_requests = sum(1 for e in intent_events if e.get("requested_star"))
+    star_included = sum(1 for e in intent_events if e.get("included_star"))
+
+    recent_questions = [
+        {"ts": rec.get("ts", ""), "question": rec.get("q", ""), "canonical": rec.get("q_canonical", "")}
+        for rec in question_records[-10:]
+    ][::-1]
+
+    return {
+        "question_count": len(question_records),
+        "top_canonical_questions": [{"question": q, "count": c} for q, c in top_canonical],
+        "top_normalized_questions": [{"question": q, "count": c} for q, c in top_normalized],
+        "intent_counts": [{"intent": intent, "count": count} for intent, count in sorted(intent_counts.items(), key=lambda item: item[1], reverse=True)],
+        "recent_questions": recent_questions,
+        "intent_event_count": len(intent_events),
+        "star_trigger_rate": (star_requests / len(intent_events) * 100) if intent_events else 0,
+        "star_included_rate": (star_included / len(intent_events) * 100) if intent_events else 0,
+    }
+
 
 def split_authoritative(cv_text: str):
     """
@@ -212,18 +405,29 @@ def dedupe_lines(lines: list[str]) -> list[str]:
 
 def log_question(question: str, name: str | None, company: str | None):
     QUESTION_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    norm_question = normalize_question_text(question)
+    canonical_question = canonical_question_text(question)
     with QUESTION_LOG_FILE.open("a", encoding="utf-8") as f:
         f.write(
             f"{datetime.utcnow().isoformat()} | "
             f"name={name or '-'} | "
             f"company={company or '-'} | "
-            f"q={question}\n"
+            f"q={question} | "
+            f"q_norm={norm_question} | "
+            f"q_canonical={canonical_question}\n"
         )
-        
+
 
 def should_use_star(question: str) -> bool:
-    q = question.lower()
-    return any(p in q for p in STAR_TRIGGER_PHRASES)
+    normalized = normalize_question_text(question)
+    if any(p in normalized for p in STAR_TRIGGER_PHRASES):
+        return True
+
+    if re.search(r"\b(star|situation|task|action|result|challenge|behaviour|behavior|tell me about a time|give an example|example|scenario)\b", normalized):
+        return True
+
+    return False
+
 
 def split_star_examples(star_text: str) -> list[str]:
     """
@@ -267,7 +471,7 @@ def split_star_examples(star_text: str) -> list[str]:
 
 def find_relevant_star_examples(star_text: str, question: str, limit: int = 1):
     """
-    Score each STAR block by how many kept_words appear in it.
+    Score each STAR block by how many relevant question terms appear in it.
     Returns (kept_words, top_blocks)
     """
     blocks = split_star_examples(star_text)
@@ -282,6 +486,7 @@ def find_relevant_star_examples(star_text: str, question: str, limit: int = 1):
     for block in blocks:
         b_lower = block.lower()
         score = sum(1 for w in kept_words if w and w in b_lower)
+        score += sum(1 for marker in ("challenge", "problem", "situation", "action", "result") if marker in b_lower)
         if score > 0:
             scored.append((score, block))
 
@@ -303,6 +508,12 @@ def build_search_terms(question: str) -> list[str]:
         for alias in SEARCH_TERM_ALIASES.get(clean, []):
             if alias not in terms:
                 terms.append(alias)
+
+    # Ensure useful multi-word concepts are present for recruiter questions.
+    if "business" in terms and "analyst" not in terms:
+        terms.append("business analyst")
+    if "data" in terms and "analysis" not in terms:
+        terms.append("data analysis")
 
     return terms
 
@@ -399,11 +610,17 @@ def find_relevant_sentences(cv_text: str, question: str, limit: int | None = Non
 
     entries = extract_cv_entries(cv_text)
     kept_words = build_search_terms(question)
+    intent = classify_question_intent(question)
 
     scored = []
     for entry in entries:
         entry_lower = entry.lower()
-        score = sum(1 for w in kept_words if w in entry_lower)
+        score = 0
+        score += sum(1 for w in kept_words if w in entry_lower)
+        score += sum(weight for phrase, weight in PHRASE_WEIGHTS.items() if phrase in entry_lower)
+        score += sum(2 for term in ("business analyst", "project delivery", "stakeholder", "data analysis") if term in entry_lower)
+        if intent == "star" and any(term in entry_lower for term in ("situation", "task", "action", "result", "challenge")):
+            score += 3
         if score > 0:
             scored.append((score, entry))
 
@@ -447,7 +664,7 @@ TOOLS_SYSTEM_PROMPT = (
 )
 
 
-def build_system_prompt(question: str, context: str) -> str:
+def build_system_prompt(question: str, context: str, detail_level: str = "concise") -> str:
     question_lower = question.lower()
     system_parts = [BASE_SYSTEM_PROMPT]
 
@@ -462,6 +679,12 @@ def build_system_prompt(question: str, context: str) -> str:
 
     if any(term in question_lower for term in ("tool", "tools", "technology", "technologies", "tech stack", "stack")):
         system_parts.append(TOOLS_SYSTEM_PROMPT)
+
+    if detail_level == "detailed":
+        system_parts.append(
+            "When the user chooses a detailed answer, provide one additional concrete example or evidence point, ideally from different roles or outcomes. "
+            "Keep the response professional and focused on recruiter needs."
+        )
 
     return "\n\n".join(system_parts)
 
@@ -503,6 +726,116 @@ def admin():
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/ready")
+def ready():
+    return {
+        "ok": bool(CV_BODY),
+        "cv_loaded": bool(CV_BODY),
+        "star_loaded": bool(STAR_TEXT),
+        "cv_length": len(CV_BODY),
+        "star_length": len(STAR_TEXT),
+    }
+
+
+@app.get("/status")
+def status():
+    return {
+        "cv_loaded": bool(CV_BODY),
+        "star_loaded": bool(STAR_TEXT),
+        "cv_length": len(CV_BODY),
+        "star_length": len(STAR_TEXT),
+        "star_blocks": count_star_blocks(STAR_TEXT or ""),
+    }
+
+
+@app.get("/analytics")
+def analytics():
+    return analytics_summary()
+
+
+@app.get("/admin_state")
+def admin_state():
+    return {
+        "cv_loaded": bool(CV_BODY),
+        "star_loaded": bool(STAR_TEXT),
+        "cv_length": len(CV_BODY),
+        "star_length": len(STAR_TEXT),
+        "cv_text": CV_BODY,
+        "star_text": STAR_TEXT,
+        "cv_file": get_file_metadata(CV_FILE),
+        "star_file": get_file_metadata(STAR_FILE),
+    }
+
+
+@app.get("/api/admin_state")
+def api_admin_state():
+    return admin_state()
+
+
+@app.get("/api/analytics")
+def api_analytics():
+    return analytics()
+
+
+@app.get("/api/reload")
+def api_reload():
+    return reload_files()
+
+
+@app.get("/api/status")
+def api_status():
+    return status()
+
+
+@app.get("/api/ready")
+def api_ready():
+    return ready()
+
+
+@app.get("/api/health")
+def api_health():
+    return {
+        "ok": True,
+        "service": "knowMe agent API",
+        "version": "1.0",
+        "api_docs": "/api/docs",
+    }
+
+
+@app.get("/api/docs")
+def api_docs():
+    return {
+        "service": "knowMe agent API",
+        "version": "1.0",
+        "description": "Agent-friendly endpoints for CV/STAR ingestion, status, analytics, and question answering.",
+        "endpoints": [
+            {"method": "GET", "path": "/api/ready", "description": "Readiness state for loaded CV and STAR content."},
+            {"method": "GET", "path": "/api/status", "description": "Backend status with loaded file metrics."},
+            {"method": "GET", "path": "/api/admin_state", "description": "Loaded CV and STAR text, plus metadata."},
+            {"method": "GET", "path": "/api/analytics", "description": "Question analytics, intent distribution, and recent questions."},
+            {"method": "GET", "path": "/api/reload", "description": "Reload content from disk and refresh in-memory state."},
+            {"method": "POST", "path": "/api/ingest_cv", "description": "Ingest CV text into backend storage."},
+            {"method": "POST", "path": "/api/ingest_star", "description": "Ingest STAR text into backend storage."},
+            {"method": "POST", "path": "/api/ask", "description": "Ask a recruiter-style question and receive an answer plus metadata."},
+        ],
+    }
+
+
+@app.post("/api/ingest_cv")
+def api_ingest_cv(payload: dict):
+    return ingest(payload)
+
+
+@app.post("/api/ingest_star")
+def api_ingest_star(payload: dict):
+    return ingest_star(payload)
+
+
+@app.post("/api/ask")
+def api_ask(payload: dict):
+    return ask(payload)
 
 
 # ─────────────────────────
@@ -560,6 +893,7 @@ def ask(payload: dict):
     debug = bool(payload.get("debug", False))
     use_llm = bool(payload.get("use_llm", False))
     preview_context = bool(payload.get("preview_context", False))
+    detail_level = payload.get("detail_level", "concise")
 
     if len(question) > MAX_QUESTION_CHARS:
         return {"answer": f"Please shorten your question to under {MAX_QUESTION_CHARS} characters."}
@@ -570,6 +904,9 @@ def ask(payload: dict):
     name = payload.get("name")
     company = payload.get("company")
     log_question(question, name, company)
+
+    q_norm = normalize_question_text(question)
+    q_canonical = canonical_question_text(question)
 
     kept_words, top = find_relevant_sentences(CV_BODY, question)
     bullets = dedupe_lines([clean_line(s) for _, s in top])
@@ -608,7 +945,7 @@ def ask(payload: dict):
         context_parts.append("RELEVANT EXPERIENCE:\n" + "\n".join(f"- {b}" for b in bullets))
 
     full_context = "\n\n".join(context_parts)
-    system_prompt = build_system_prompt(question, full_context)
+    system_prompt = build_system_prompt(question, full_context, detail_level)
     llm_would_run = use_llm and not preview_context
 
     if not bullets and not star_blocks:
@@ -622,30 +959,52 @@ def ask(payload: dict):
                 "kept_words": kept_words,
                 "bullets": bullets,
                 "star": star_blocks,
+                "q_norm": q_norm,
+                "q_canonical": q_canonical,
             })
         return response
 
     final_answer = bullets
+    answer_source = "retrieval"
+    llm_error = None
+
     if llm_would_run:
-        final_answer = llm_rewrite_answer(question, full_context)
+        try:
+            final_answer = llm_rewrite_answer(question, full_context)
+            answer_source = "llm"
+        except Exception as exc:
+            llm_error = str(exc)
+            if bullets:
+                final_answer = bullets
+            else:
+                final_answer = ["LLM unavailable and no retrieval answer is available."]
+            answer_source = "fallback"
 
-    print("\n===== FULL CONTEXT SENT TO LLM =====")
-    print(full_context[:2000])
-    print("===== END CONTEXT (first 2000 chars) =====\n")
+    if llm_would_run:
+        print("\n===== FULL CONTEXT SENT TO LLM =====")
+        print(full_context[:2000])
+        print("===== END CONTEXT (first 2000 chars) =====\n")
 
-    response: dict[str, str | list[str] | bool] = {"answer": final_answer}
+    response: dict[str, str | list[str] | bool] = {"answer": final_answer, "answer_source": answer_source}
+    if llm_error:
+        response["llm_error"] = llm_error
 
     if debug or preview_context:
         response.update({
+            "intent": classify_question_intent(question),
+            "detail_level": detail_level,
             "use_star": use_star,
             "star_found": bool(star_blocks),
             "star": star_blocks,
+            "q_norm": q_norm,
+            "q_canonical": q_canonical,
             "kept_words": kept_words,
             "bullets": bullets,
             "preview_context": full_context,
             "system_prompt": system_prompt,
             "llm_requested": use_llm,
             "llm_executed": llm_would_run,
+            "answer_source": answer_source,
         })
 
     return response

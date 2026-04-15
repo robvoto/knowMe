@@ -20,7 +20,8 @@ body {
   color: var(--text);
 }
 
-.page {
+.page,
+.admin-page {
   max-width: 980px;
   margin: 24px auto;
   padding: 0 16px 32px;
@@ -30,31 +31,32 @@ body {
   background: linear-gradient(180deg, #ffffff 0%, #f6f9fd 100%);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 20px 22px 16px;
+  padding: 24px 26px 22px;
   box-shadow: var(--shadow);
   margin-bottom: 18px;
 }
 
 .hero h1 {
   margin: 0 0 10px;
-  font-size: 28px;
-  line-height: 1.15;
+  font-size: 32px;
+  line-height: 1.1;
 }
 
 .hero p {
   margin: 0;
   color: var(--muted);
   font-size: 15px;
-  line-height: 1.45;
+  line-height: 1.6;
 }
 
-.card {
+.card,
+.admin-card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: 18px;
-  margin-bottom: 16px;
+  padding: 22px;
+  margin-bottom: 18px;
 }
 
 .section-label {
@@ -80,10 +82,11 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
-input[type="text"] {
+input[type="text"],
+textarea {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--border);
@@ -92,7 +95,13 @@ input[type="text"] {
   background: white;
 }
 
-input[type="text"]:focus {
+textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+
+input[type="text"]:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
@@ -112,7 +121,20 @@ button:hover {
   background: #eaf1ff;
 }
 
-#askBtn {
+button.secondary {
+  border-radius: 10px;
+  background: #eef4ff;
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d7e6ff;
+}
+
+#askBtn,
+#reloadBtn,
+#ingestBtn,
+#ingestStarBtn {
   border: none;
   background: var(--accent);
   color: white;
@@ -121,12 +143,15 @@ button:hover {
   font-weight: 700;
 }
 
-#askBtn:hover {
+#askBtn:hover,
+#reloadBtn:hover,
+#ingestBtn:hover,
+#ingestStarBtn:hover {
   background: var(--accent-hover);
 }
 
 .ask-footer {
-  margin-top: 14px;
+  margin-top: 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -134,23 +159,129 @@ button:hover {
 }
 
 .examples {
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
 }
 
-#pretty {
+.ex {
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  background: #f7fbff;
+  border: 1px solid #dbe9ff;
+}
+
+.ex:hover {
+  background: #e9f2ff;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+#pretty,
+#out {
   background: var(--panel-soft);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px;
+  padding: 18px;
   min-height: 170px;
   white-space: pre-wrap;
   line-height: 1.6;
 }
 
-.footer-note {
+.status-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.followups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.followups .ex {
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #f0f9f5;
+  border: 1px solid #c8e9d3;
+  color: #1f5f35;
+  text-align: left;
+}
+
+.followups .ex:hover {
+  background: #e4f2ea;
+}
+
+.answer-header {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.answer-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.followup-section {
+  margin-top: 16px;
+}
+
+.ask-note {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.status-line,
+.status-chip {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+}
+
+.footer-note,
+.tip {
   margin-top: 10px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.admin-card h1,
+.admin-card h2 {
+  margin: 0 0 10px;
+}
+
+.admin-card h2 {
+  font-size: 18px;
+}
+
+.admin-section {
+  margin-bottom: 24px;
 }
 
 @media (max-width: 720px) {
@@ -158,12 +289,16 @@ button:hover {
     grid-template-columns: 1fr;
   }
 
-  .ask-footer {
+  .ask-footer,
+  .answer-actions {
     flex-direction: column;
     align-items: stretch;
   }
 
-  #askBtn {
+  #askBtn,
+  #reloadBtn,
+  #ingestBtn,
+  #ingestStarBtn {
     width: 100%;
   }
 }

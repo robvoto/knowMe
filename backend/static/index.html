@@ -1,111 +1,245 @@
 <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8" />
-  <title>RobBot — CV Q&A</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KnowMe — CV Q&A</title>
   <link rel="stylesheet" href="/static/main-style.css">
 </head>
 
 <body>
   <div class="page">
     <div class="hero">
-      <h1>Hi, I’m RobBot — Interactive CV Assistant</h1>
-      <p>
-        Ask targeted questions about Rob’s experience, delivery background,
-        business analysis capability, and project examples.
-      </p>
+      <h1>KnowMe — Interactive CV Assistant</h1>
+      <p>Ask recruiter-style questions about Rob’s experience, delivery, capability, and STAR examples.</p>
     </div>
 
     <div class="card">
       <div class="section-label">Suggested recruiter questions</div>
-      <div class="row examples">
-        <button class="ex" data-q="What API experience does Rob have? Give concrete examples.">API experience</button>
-        <button class="ex" data-q="Has Rob used BPMN? Give concrete project examples.">BPMN examples</button>
-        <button class="ex" data-q="What tools has Rob used across business analysis, testing, and delivery?">Tools used</button>
-        <button class="ex" data-q="What government departments or industries has Rob worked in?">Departments / industries</button>
-        <button class="ex" data-q="What experience does Rob have with data analysis, SQL, or reporting?">Data / SQL</button>
-        <button class="ex" data-q="What experience does Rob have with Agile, Scrum, and delivery collaboration?">Agile / Scrum</button>
-        <button class="ex" data-q="Has Rob worked with vendors, external teams, or difficult stakeholders? Give examples.">Stakeholder management</button>
-        <button class="ex" data-q="What experience does Rob have writing user stories, requirements, or acceptance criteria?">Requirements</button>
-        <button class="ex" data-q="Tell me about a time Rob improved a process using a STAR example.">STAR process improvement</button>
-        <button class="ex" data-q="Describe a difficult stakeholder situation and how Rob kept alignment using a STAR example.">STAR difficult stakeholder</button>
-        <button class="ex" data-q="What experience does Rob have in testing, UAT, or quality assurance?">Testing / UAT</button>
-        <button class="ex" data-q="Why would Rob be a strong fit for a senior business analyst or technical BA role?">Why Rob</button>
+      <div class="examples">
+        <button class="ex sample" data-q="What API experience does Rob have? Give concrete examples.">API experience</button>
+        <button class="ex sample" data-q="Has Rob used BPMN? Give concrete project examples.">BPMN examples</button>
+        <button class="ex sample" data-q="What tools has Rob used across business analysis, testing, and delivery?">Tools used</button>
+        <button class="ex sample" data-q="What government departments or industries has Rob worked in?">Industries</button>
+        <button class="ex sample" data-q="What experience does Rob have with data analysis, SQL, or reporting?">Data / SQL</button>
+        <button class="ex sample" data-q="What experience does Rob have with Agile, Scrum, and delivery collaboration?">Agile / Scrum</button>
+        <button class="ex sample" data-q="Has Rob worked with vendors, external teams, or difficult stakeholders? Give examples.">Stakeholder management</button>
+        <button class="ex sample" data-q="What experience does Rob have writing user stories, requirements, or acceptance criteria?">Requirements</button>
+        <button class="ex sample" data-q="Tell me about a time Rob improved a process using a STAR example.">STAR process improvement</button>
+        <button class="ex sample" data-q="Describe a difficult stakeholder situation and how Rob kept alignment using a STAR example.">STAR difficult stakeholder</button>
+        <button class="ex sample" data-q="What experience does Rob have in testing, UAT, or quality assurance?">Testing / UAT</button>
+        <button class="ex sample" data-q="Why would Rob be a strong fit for a senior business analyst or technical BA role?">Why Rob</button>
       </div>
+      <p class="tip">Tip: click a sample to load it into the question field, then edit it for your specific needs.</p>
     </div>
 
     <div class="card">
       <div class="section-label">Ask a question</div>
-      <div class="small" style="margin-bottom:10px;">Optional recruiter context</div>
-
       <div class="context-row">
         <input id="name" type="text" placeholder="Your name (optional)" />
         <input id="company" type="text" placeholder="Company (optional)" />
       </div>
-
       <input id="q" type="text" placeholder="Example: Has Rob worked with vendors, external teams, or difficult stakeholders?" />
-
       <div class="ask-footer">
-        <label class="small">
-          <input id="use_llm" type="checkbox" checked />
-          Use OpenAI
-        </label>
+        <label class="checkbox-label"><input id="use_llm" type="checkbox" checked /> Use LLM rewrite</label>
+        <label class="checkbox-label"><input id="detailed_answer" type="checkbox" /> More detailed answer</label>
         <button id="askBtn">Ask question</button>
       </div>
+      <div class="small ask-note">Use LLM rewrite: send the retrieved answer to the OpenAI model for a cleaner, recruiter-friendly response. Detailed answer adds one extra concrete example or evidence point.</div>
+      <div id="status" class="status-line">Checking backend status...</div>
     </div>
 
     <div class="card">
-      <div class="section-label">Answer</div>
+      <div class="answer-header">Answer</div>
+      <div class="status-row">
+        <span id="answerSource" class="status-chip">Source: retrieval</span>
+        <span id="answerLength" class="status-chip">Answer length: 0</span>
+      </div>
       <div id="pretty">(no answer yet)</div>
-      <p id="status" class="small"></p>
-      <div class="footer-note">Tip: click one of the sample questions to see strong examples quickly.</div>
+      <div class="answer-actions">
+        <button id="copyBtn" class="secondary">Copy answer</button>
+        <button id="clearBtn" class="secondary">Clear</button>
+      </div>
+      <div class="followup-section">
+        <div class="section-label">Follow-up suggestions</div>
+        <div class="followups" id="followups"></div>
+      </div>
+      <p class="footer-note">If the answer is too general, try making your question more specific or enable AI rewriting for a more polished response.</p>
     </div>
   </div>
-</body>
 
   <script>
+    function setStatus(text, isError = false) {
+      const status = document.getElementById('status');
+      status.textContent = text;
+      status.style.color = isError ? '#b62f2f' : 'var(--muted)';
+    }
+
     async function postJSON(url, data) {
       const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!res.ok) {
+        throw new Error(`Request failed: ${res.status}`);
+      }
       return await res.json();
     }
 
-    document.querySelectorAll("button.ex").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.getElementById("q").value = btn.dataset.q;
+    async function loadReadyState() {
+      try {
+        const resp = await fetch('/ready');
+        const ready = await resp.json();
+        const statusText = ready.ok ? `Ready: CV loaded=${ready.cv_loaded}, STAR loaded=${ready.star_loaded}` : 'Not ready yet';
+        setStatus(statusText);
+      } catch (error) {
+        setStatus('Backend unavailable', true);
+      }
+    }
+
+    function updateSource(source) {
+      const chip = document.getElementById('answerSource');
+      chip.textContent = `Source: ${source || 'retrieval'}`;
+    }
+
+    function updateAnswer(text) {
+      const pretty = document.getElementById('pretty');
+      pretty.textContent = text;
+      const copyBtn = document.getElementById('copyBtn');
+      copyBtn.style.display = text && text !== '(no answer yet)' ? 'inline-flex' : 'none';
+      document.getElementById('answerLength').textContent = `Length: ${text ? text.length : 0}`;
+    }
+
+    function buildFollowUps(question) {
+      const normalized = (question || '').toLowerCase();
+      const suggestions = [];
+      const add = (q) => {
+        if (!suggestions.includes(q)) {
+          suggestions.push(q);
+        }
+      };
+
+      if (/(tool|technology|platform|software)/.test(normalized)) {
+        add('What specific tools or platforms did Rob use in delivery and testing?');
+      }
+      if (/(bpmn|process mapping)/.test(normalized)) {
+        add('What experience does Rob have with BPMN or process mapping?');
+      }
+      if (/(data|sql|reporting|analytics)/.test(normalized)) {
+        add('How has Rob used SQL and reporting in past projects?');
+      }
+      if (/(stakeholder|vendor|client|clients|vendors)/.test(normalized)) {
+        add('Give examples of Rob working with stakeholders or vendors.');
+      }
+      if (/(star|example|challenge|situation|task|action|result)/.test(normalized)) {
+        add('Describe a time Rob improved a process using STAR format.');
+      }
+      if (/(fit|strong fit|good fit|why would|why is)/.test(normalized)) {
+        add('Why would Rob be a strong fit for a senior business analyst role?');
+      }
+      if (/(industry|industries|department|organisations|organizations|government)/.test(normalized)) {
+        add('What types of organisations has Rob worked with and why are they relevant?');
+      }
+      if (/(test|uat|quality assurance|qa)/.test(normalized)) {
+        add('What experience does Rob have in testing, UAT, or quality assurance?');
+      }
+
+      const defaultFollowups = [
+        'What specific tools or platforms did Rob use in delivery and testing?',
+        'Give examples of Rob working with stakeholders or vendors.',
+        'Describe a time Rob improved a process using STAR format.',
+        'How does Rob approach data analysis or reporting in projects?',
+        'What experience does Rob have with BPMN or process mapping?'
+      ];
+
+      if (!suggestions.length) {
+        return defaultFollowups.slice(0, 3);
+      }
+      return suggestions.slice(0, 3);
+    }
+
+    function renderFollowUps(question = '') {
+      const followups = buildFollowUps(question);
+      document.getElementById('followups').innerHTML = followups
+        .map(q => `<button class="ex followup" data-q="${q}">${q}</button>`)
+        .join('');
+      document.querySelectorAll('#followups .followup').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const q = btn.dataset.q;
+          document.getElementById('q').value = q;
+          setStatus('Follow-up suggestion loaded.');
+          renderFollowUps(q);
+        });
+      });
+    }
+
+    function clearForm() {
+      document.getElementById('q').value = '';
+      document.getElementById('pretty').textContent = '(no answer yet)';
+      document.getElementById('status').textContent = '';
+      document.getElementById('copyBtn').style.display = 'none';
+      renderFollowUps();
+    }
+
+    document.querySelectorAll('button.sample').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const q = btn.dataset.q;
+        document.getElementById('q').value = q;
+        setStatus('Sample question loaded.');
+        renderFollowUps(q);
       });
     });
 
-    document.getElementById("askBtn").addEventListener("click", async () => {
-      const question = document.getElementById("q").value.trim();
-      const use_llm = document.getElementById("use_llm").checked;
-      const name = document.getElementById("name").value.trim();
-      const company = document.getElementById("company").value.trim();
-      const pretty = document.getElementById("pretty");
-      const status = document.getElementById("status");
-      status.textContent = "";
+    document.getElementById('askBtn').addEventListener('click', async () => {
+      const question = document.getElementById('q').value.trim();
+      const use_llm = document.getElementById('use_llm').checked;
+      const detailed = document.getElementById('detailed_answer').checked ? 'detailed' : 'concise';
+      const name = document.getElementById('name').value.trim();
+      const company = document.getElementById('company').value.trim();
 
       if (!question) {
-        status.innerHTML = "<span class='warn'>Please type a question.</span>";
+        setStatus('Please type a question.', true);
         return;
       }
 
-      pretty.textContent = "Thinking…";
+      updateAnswer('Thinking…');
+      updateSource('retrieval');
+      setStatus('Sending question...');
 
-      const resp = await postJSON("/ask", { question, use_llm, debug: false, name, company });
-
-      if (typeof resp.answer === "string") {
-        pretty.textContent = resp.answer;
-      } else if (Array.isArray(resp.answer)) {
-        pretty.textContent = resp.answer.join("\n");
-      } else {
-        pretty.textContent = JSON.stringify(resp, null, 2);
+      try {
+        const resp = await postJSON('/ask', { question, use_llm, debug: false, detail_level: detailed, name, company });
+        let text = '';
+        if (typeof resp.answer === 'string') {
+          text = resp.answer;
+        } else if (Array.isArray(resp.answer)) {
+          text = resp.answer.join('\n');
+        } else {
+          text = JSON.stringify(resp, null, 2);
+        }
+        updateAnswer(text);
+        updateSource(resp.answer_source || (use_llm ? 'llm' : 'retrieval'));
+        setStatus(resp.answer_source === 'llm' ? 'AI-enhanced answer loaded.' : 'Answer loaded from retrieval.');
+        renderFollowUps(question);
+      } catch (error) {
+        updateAnswer('(error loading answer)');
+        setStatus(error.message || 'Failed to get an answer.', true);
       }
     });
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const text = document.getElementById('pretty').textContent;
+      if (!text || text === '(no answer yet)') return;
+      await navigator.clipboard.writeText(text);
+      setStatus('Answer copied to clipboard.');
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', clearForm);
+
+    clearForm();
+    renderFollowUps();
+    loadReadyState();
   </script>
 </body>
 </html>
