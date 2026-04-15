@@ -105,6 +105,73 @@ PHRASE_WEIGHTS = {
     "business analyst": 4,
 }
 
+FOLLOWUP_SUGGESTIONS: dict[str, list[str]] = {
+    "api": [
+        "What tools or platforms has Rob used alongside APIs in delivery projects?",
+        "Has Rob worked with external vendors or third-party system integrations?",
+        "What experience does Rob have with data analysis or reporting in projects?",
+    ],
+    "bpmn": [
+        "What tools has Rob used for process mapping or business analysis?",
+        "Has Rob worked with stakeholders to design or validate business processes?",
+        "Describe a situation where Rob improved a process — STAR format.",
+    ],
+    "data": [
+        "What experience does Rob have with SQL, reporting tools, or dashboards?",
+        "Has Rob worked on data quality or governance initiatives?",
+        "What experience does Rob have with Agile or delivery in data projects?",
+    ],
+    "agile": [
+        "What experience does Rob have writing requirements or user stories in Agile?",
+        "Has Rob worked with external vendors or stakeholders in Agile delivery?",
+        "Describe a challenging delivery situation — STAR format.",
+    ],
+    "requirements": [
+        "What experience does Rob have in UAT or quality assurance of requirements?",
+        "Has Rob worked directly with stakeholders or end users to gather requirements?",
+        "Describe a time Rob resolved a requirements conflict — STAR format.",
+    ],
+    "stakeholders": [
+        "Describe a difficult stakeholder situation and how Rob managed it — STAR format.",
+        "Has Rob worked with external vendors or government clients?",
+        "What experience does Rob have leading workshops or requirements sessions?",
+    ],
+    "testing": [
+        "What tools or platforms has Rob used for testing and quality assurance?",
+        "Has Rob worked in government or regulated environments requiring formal testing?",
+        "Describe a time Rob found a critical issue during UAT — STAR format.",
+    ],
+    "star": [
+        "Describe a time Rob led delivery in a complex stakeholder environment.",
+        "Tell me about a process Rob improved that had measurable results.",
+        "What experience does Rob have in testing, UAT, or quality assurance?",
+    ],
+    "fit": [
+        "What industries or government departments has Rob worked in?",
+        "What tools and technologies has Rob used most recently?",
+        "Describe a challenging project Rob led — STAR format.",
+    ],
+    "tools": [
+        "What experience does Rob have with data analysis, SQL, or reporting tools?",
+        "Has Rob used BPMN or process mapping tools in past projects?",
+        "What tools has Rob used in Agile or delivery collaboration?",
+    ],
+    "general": [
+        "Why would Rob be a strong fit for a senior business analyst role?",
+        "What tools and technologies has Rob used most recently?",
+        "Describe a time Rob solved a complex problem — STAR format.",
+    ],
+}
+
+
+def suggest_followup_questions(intent: str, question: str) -> list[str]:
+    """Return follow-up question suggestions based on detected intent, excluding close matches to the current question."""
+    pool = FOLLOWUP_SUGGESTIONS.get(intent, FOLLOWUP_SUGGESTIONS["general"])
+    q_lower = question.lower()
+    filtered = [s for s in pool if s.lower()[:30] not in q_lower]
+    return (filtered if filtered else pool)[:3]
+
+
 STAR_TRIGGER_PHRASES = [
     "star",
     "tell me about a time",
@@ -985,13 +1052,20 @@ def ask(payload: dict):
         print(full_context[:2000])
         print("===== END CONTEXT (first 2000 chars) =====\n")
 
-    response: dict[str, str | list[str] | bool] = {"answer": final_answer, "answer_source": answer_source}
+    intent = classify_question_intent(question)
+    follow_up_questions = suggest_followup_questions(intent, question)
+
+    response: dict[str, str | list[str] | bool] = {
+        "answer": final_answer,
+        "answer_source": answer_source,
+        "follow_up_questions": follow_up_questions,
+    }
     if llm_error:
         response["llm_error"] = llm_error
 
     if debug or preview_context:
         response.update({
-            "intent": classify_question_intent(question),
+            "intent": intent,
             "detail_level": detail_level,
             "use_star": use_star,
             "star_found": bool(star_blocks),

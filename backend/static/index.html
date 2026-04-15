@@ -160,8 +160,8 @@
       return suggestions.slice(0, 3);
     }
 
-    function renderFollowUps(question = '') {
-      const followups = buildFollowUps(question);
+    function renderFollowUps(question = '', backendSuggestions = null) {
+      const followups = (backendSuggestions && backendSuggestions.length) ? backendSuggestions : buildFollowUps(question);
       document.getElementById('followups').innerHTML = followups
         .map(q => `<button class="ex followup" data-q="${q}">${q}</button>`)
         .join('');
@@ -221,7 +221,7 @@
         updateAnswer(text);
         updateSource(resp.answer_source || (use_llm ? 'llm' : 'retrieval'));
         setStatus(resp.answer_source === 'llm' ? 'AI-enhanced answer loaded.' : 'Answer loaded from retrieval.');
-        renderFollowUps(question);
+        renderFollowUps(question, resp.follow_up_questions || null);
       } catch (error) {
         updateAnswer('(error loading answer)');
         setStatus(error.message || 'Failed to get an answer.', true);
