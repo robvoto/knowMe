@@ -601,6 +601,8 @@ def extract_cv_entries(cv_text: str) -> list[str]:
 
     for raw_line in cv_text.splitlines():
         stripped = raw_line.strip()
+        # Strip markdown bold/italic/heading markers
+        stripped = stripped.strip("*#").strip()
         if not stripped:
             continue
 
@@ -611,7 +613,7 @@ def extract_cv_entries(cv_text: str) -> list[str]:
         if stripped.startswith("TOOLS (AUTHORITATIVE LIST)"):
             current_section = "tools"
             continue
-        if EMPLOYMENT_HISTORY_MARKER in upper:
+        if EMPLOYMENT_HISTORY_MARKER in upper or "PROFESSIONAL EXPERIENCE" in upper:
             current_section = "employment"
             in_employment_history = True
             current_org = None
@@ -633,7 +635,8 @@ def extract_cv_entries(cv_text: str) -> list[str]:
             entries.append(f"[{current_org}] Period: {stripped}")
             continue
 
-        if in_employment_history and not stripped.startswith("-") and ":" not in stripped and len(stripped) < 80 and not is_period_line(stripped) and not any(ch.isdigit() for ch in stripped):
+        _role_markers = {"analyst", "developer", "consultant", "manager", "lead", "scrum", "master", "engineer", "architect", "director", "officer", "specialist"}
+        if in_employment_history and not stripped.startswith("-") and ":" not in stripped and len(stripped) < 80 and not is_period_line(stripped) and not any(ch.isdigit() for ch in stripped) and not any(m in stripped.lower() for m in _role_markers):
             current_org = stripped
             continue
 
@@ -695,13 +698,13 @@ def find_relevant_sentences(cv_text: str, question: str, limit: int | None = Non
     return kept_words, scored[:limit]
 
 BASE_SYSTEM_PROMPT = (
-    "You answer recruiter questions about candidate Rob Voto. "
-    "Use the supplied CV text as the source of truth for facts. "
-    "You may make reasonable high-level inferences when they are clearly supported by the CV context. "
-    "Do not invent experience beyond reasonable professional inference. "
-    "If the answer is not present in the supplied text, say exactly: "
-    "'I can't find that in the CV text I was given.' "
-    "Unless the question explicitly asks for detail, keep answers concise and factual."
+    "You answer recruiter questions about candidate Rob Voto based strictly on the supplied CV text. "
+    "CRITICAL RULE: Every point in your answer must be anchored to a specific organisation and time period. "
+    "Never write generic skill-list answers. Always say where and when. "
+    "Lead with the most recent and directly relevant experience. "
+    "Do not invent or infer experience not clearly described in the CV. "
+    "If the answer is not in the supplied text, say exactly: 'I can't find that in the CV text I was given.' "
+    "Keep answers concise: 2-4 specific role-anchored points unless the question asks for more detail."
 )
 
 FIT_QUESTION_PROMPT = (
@@ -756,8 +759,8 @@ def build_system_prompt(question: str, context: str, detail_level: str = "concis
     return "\n\n".join(system_parts)
 
 
-def llm_rewrite_answer(question: str, context: str) -> str:
-    system_prompt = build_system_prompt(question, context)
+def llm_rewrite_answer(question: str, context: str, detail_level: str = "concise") -> str:
+    system_prompt = build_system_prompt(question, context, detail_level)
     resp = client.responses.create(
         model="gpt-4.1-mini",
         input=[
@@ -1037,7 +1040,7 @@ def ask(payload: dict):
 
     if llm_would_run:
         try:
-            final_answer = llm_rewrite_answer(question, full_context)
+            final_answer = llm_rewrite_answer(question, full_context, detail_level)
             answer_source = "llm"
         except Exception as exc:
             llm_error = str(exc)
