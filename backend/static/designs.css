@@ -1,4 +1,5 @@
 :root {
+  --font-ui: "Segoe UI", Arial, sans-serif;
   --ink: #151515;
   --ink-soft: #5f5a4f;
   --cream: #f5f1e7;
@@ -29,7 +30,7 @@ body.designs-page {
     radial-gradient(circle at top left, rgba(150, 197, 255, 0.24), transparent 30%),
     radial-gradient(circle at top right, rgba(206, 246, 193, 0.18), transparent 24%),
     linear-gradient(180deg, #eef2f8 0%, #f7f5ef 52%, #f5efe5 100%);
-  font-family: "Segoe UI", "Avenir Next", Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .designs-topbar,
@@ -51,7 +52,7 @@ body.designs-page {
 .mockup h3,
 .mockup h4,
 .stat-grid strong {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-ui);
 }
 
 .designs-topbar h1 {
@@ -155,8 +156,8 @@ body.designs-page {
 }
 
 .brand-mark {
-  font-family: Georgia, "Times New Roman", serif;
   font-size: 2rem;
+  font-weight: 800;
 }
 
 .brand-sub,
@@ -200,7 +201,7 @@ body.designs-page {
 .mockup-a-copy h3 em {
   color: #d8e8bd;
   font-style: italic;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .mockup-a-copy p {
@@ -252,6 +253,7 @@ body.designs-page {
   display: block;
   margin-bottom: 8px;
   font-size: 3.3rem;
+  font-weight: 800;
   color: #fff8ef;
 }
 
@@ -289,8 +291,8 @@ body.designs-page {
   display: grid;
   place-items: center;
   margin: 18px 0 22px;
-  font-family: Georgia, "Times New Roman", serif;
   font-size: 2rem;
+  font-weight: 800;
   color: #ffffff;
   background: #2b7d5a;
 }

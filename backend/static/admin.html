@@ -20,12 +20,14 @@
   <div class="admin-card" id="adminApp" hidden>
     <h1>KnowMe - Admin</h1>
     <p class="small">Load CV text, ingest STAR examples, and run recruiter-style questions here.</p>
+    <p class="small">Backend logs are written for load, save, reload, login, logout, and question actions so you can see what changed.</p>
 
     <div class="admin-section">
       <div class="row" style="justify-content: space-between; align-items: center;">
         <h2>Reload current backend state</h2>
         <button id="logoutBtn" type="button" class="secondary">Lock</button>
       </div>
+      <p class="small">Reads the current CV, STAR, and prompt files from disk, then refreshes in-memory state and analytics.</p>
       <div class="row">
         <button id="reloadBtn" type="button">Refresh status</button>
         <span id="reloadStatus" class="status-chip">Waiting</span>
@@ -33,12 +35,14 @@
       <div class="row">
         <span id="cvMeta" class="status-chip">CV not loaded</span>
         <span id="starMeta" class="status-chip">STAR not loaded</span>
+        <span id="llmBudgetMeta" class="status-chip">LLM budget waiting</span>
       </div>
       <p class="small">Use this after deploying or ingesting content to confirm backend state.</p>
     </div>
 
     <div class="admin-section">
       <h2>Analytics</h2>
+      <p class="small">Shows the question mix, intent split, and recent requests captured from the question log.</p>
       <div class="row">
         <span id="analyticsStatus" class="status-chip">Waiting</span>
       </div>
@@ -63,6 +67,7 @@
     <div class="admin-section">
       <h2>1) Replace CV text</h2>
       <p class="small">Only replace the full CV for major updates. This is not a daily edit area.</p>
+      <p class="small">Saving here writes to <code>backend/data/cv.txt</code> and reloads the split CV body used for retrieval.</p>
       <div class="row" style="margin-bottom: 10px; gap: 10px;">
         <button id="loadCvBtn" type="button" class="secondary">Load current CV text</button>
         <span class="status-chip">Editable only when loaded</span>
@@ -77,6 +82,7 @@
     <div class="admin-section">
       <h2>2) Ingest STAR examples</h2>
       <p class="small">Update STAR examples when you want to refresh behavioural examples or add new use cases.</p>
+      <p class="small">Saving here writes to <code>backend/data/star.txt</code>. Keep each block clear and headed by <code>EXAMPLE</code> or <code>SKILL:</code>.</p>
       <div class="row" style="margin-bottom: 10px; gap: 10px;">
         <button id="loadStarBtn" type="button" class="secondary">Load current STAR text</button>
         <span class="status-chip">Editable only when loaded</span>
@@ -91,6 +97,7 @@
 
     <div class="admin-section">
       <h2>3) Ask and inspect</h2>
+      <p class="small">Runs the retrieval path, optional rewrite, and debug output so you can inspect the exact response path.</p>
       <div class="row" style="margin-bottom: 10px;">
         <input id="name" type="text" placeholder="Your name (optional)" />
         <input id="company" type="text" placeholder="Company (optional)" />
@@ -104,6 +111,29 @@
         <button id="askBtn" type="button">Ask</button>
       </div>
       <p class="small">When debug is enabled, the response includes context and scoring details.</p>
+    </div>
+
+    <div class="admin-section">
+      <h2>4) LLM prompts</h2>
+      <p class="small">Tune the wording the model uses. Keep the base prompt strict and use the specific prompts for fit, industry, STAR, BPMN, tools, or detailed answers.</p>
+      <p class="small">Prompt overrides are saved to <code>backend/data/prompt_config.json</code> and applied by intent when the model rewrites answers.</p>
+      <div class="row" style="margin-bottom: 10px;">
+        <select id="promptKey">
+          <option value="base">Base</option>
+          <option value="fit">Fit</option>
+          <option value="industry">Industry</option>
+          <option value="star">STAR</option>
+          <option value="bpmn">BPMN</option>
+          <option value="tools">Tools</option>
+          <option value="ai">AI</option>
+          <option value="detail">Detail</option>
+        </select>
+        <button id="loadPromptBtn" type="button" class="secondary">Load prompt</button>
+        <button id="savePromptBtn" type="button">Save prompt</button>
+      </div>
+      <textarea id="promptEditor" placeholder="Prompt text..."></textarea>
+      <p class="small">Example: add "Do not mention years unless the user specifically asks for them." to the base prompt.</p>
+      <span id="promptStatus" class="status-chip">Waiting</span>
     </div>
 
     <div class="admin-section">
@@ -188,6 +218,43 @@
       element.innerHTML = items.length ? items.map(formatItem).join('') : '<li>None</li>';
     }
 
+    function promptKeyLabel(key) {
+      return ({
+        base: 'Base',
+        fit: 'Fit',
+        industry: 'Industry',
+        star: 'STAR',
+        bpmn: 'BPMN',
+        tools: 'Tools',
+        ai: 'AI',
+        detail: 'Detail',
+      })[key] || key;
+    }
+
+    function getPromptBundle() {
+      return window.currentPromptBundle || { defaults: {}, active: {}, overrides: {} };
+    }
+
+    function loadPromptIntoEditor() {
+      const bundle = getPromptBundle();
+      const key = document.getElementById('promptKey').value;
+      const active = bundle.active || {};
+      const defaults = bundle.defaults || {};
+      const overrides = bundle.overrides || {};
+      document.getElementById('promptEditor').value = overrides[key] || active[key] || defaults[key] || '';
+      document.getElementById('promptStatus').textContent = `${promptKeyLabel(key)} prompt loaded`;
+    }
+
+    async function loadPromptState() {
+      const resp = await fetch('/api/admin_prompts', { cache: 'no-store', credentials: 'same-origin' });
+      if (!resp.ok) {
+        throw new Error(`Request failed: ${resp.status}`);
+      }
+      const data = await resp.json();
+      window.currentPromptBundle = data;
+      return data;
+    }
+
     function showLogin(message = '') {
       document.getElementById('loginCard').hidden = false;
       document.getElementById('adminApp').hidden = true;
@@ -210,7 +277,11 @@
       updateStatus('reloadStatus', `CV loaded=${data.cv_loaded}, STAR loaded=${data.star_loaded}`);
       updateStatus('cvMeta', `CV ${data.cv_loaded ? `loaded (${data.cv_length} chars)` : 'not loaded'}`);
       updateStatus('starMeta', `STAR ${data.star_loaded ? `loaded (${data.star_length} chars)` : 'not loaded'}`);
-      window.currentAdminState = data;
+      if (data.llm_budget) {
+        updateStatus('llmBudgetMeta', `LLM ${data.llm_budget.tokens_used}/${data.llm_budget.daily_cap} tokens today`);
+      } else {
+        updateStatus('llmBudgetMeta', 'LLM budget unavailable');
+      }
       return data;
     }
 
@@ -257,6 +328,37 @@
       }
     }
 
+    document.getElementById('loadPromptBtn').addEventListener('click', async () => {
+      try {
+        await loadPromptState();
+        loadPromptIntoEditor();
+      } catch (error) {
+        document.getElementById('promptStatus').textContent = `Prompt load failed: ${error.message}`;
+      }
+    });
+
+    document.getElementById('promptKey').addEventListener('change', loadPromptIntoEditor);
+
+    document.getElementById('savePromptBtn').addEventListener('click', async () => {
+      const key = document.getElementById('promptKey').value;
+      const value = document.getElementById('promptEditor').value.trim();
+      const bundle = getPromptBundle();
+      const nextOverrides = { ...(bundle.overrides || {}) };
+      nextOverrides[key] = value;
+      document.getElementById('promptStatus').textContent = 'Saving...';
+      try {
+        const resp = await postJSON('/api/admin_prompts', { overrides: nextOverrides });
+        window.currentPromptBundle = {
+          ...(bundle || {}),
+          overrides: resp.overrides,
+          active: { ...(bundle.active || {}), [key]: resp.overrides[key] || (bundle.defaults || {})[key] || '' },
+        };
+        document.getElementById('promptStatus').textContent = `${promptKeyLabel(key)} prompt saved`;
+      } catch (error) {
+        document.getElementById('promptStatus').textContent = `Prompt save failed: ${error.message}`;
+      }
+    });
+
     document.getElementById('loginBtn').addEventListener('click', async () => {
       const password = document.getElementById('adminPassword').value;
       updateStatus('loginStatus', 'Checking...');
@@ -264,6 +366,8 @@
         await postJSON('/api/admin_login', { password });
         document.getElementById('adminPassword').value = '';
         showApp();
+        await loadPromptState();
+        loadPromptIntoEditor();
         await reloadState();
       } catch (error) {
         showLogin(`Login failed: ${error.message}`);

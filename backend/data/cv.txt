@@ -265,4 +265,11 @@ Integration: REST APIs, Postman, SAP IDOC / EDI
 Platforms: AWS (basic), OutSystems, Guidewire  
 Technical: Java, JEE, JavaScript, HTML, CSS  
 
+
+AI & INNOVATION
+knowMe - Live LLM-powered platform built to let recruiters interrogate experience dynamically. FastAPI backend, RAG architecture, structured STAR-based knowledge base. Live now: KnowMe - Rob
+Job Intelligence Tool - Python + Playwright + LLM pipeline for automated job discovery, role matching against profile, and decision filtering across multiple job boards. Cuts hours of manual searching to minutes: Demo | GitHub
+SAAS Ticketing System: End-to-end ticket creation and resolution system built from scratch. Automated routing, ownership assignment, SLA tracking, and escalation logic. AI-driven automation rules.
+Agents: Built and managed a backlog-driven OpenClaw agent workflow to execute only approved coding tasks from a backlog, with strict runtime, cost, and file-change controls.
+
 ---
