@@ -28,13 +28,16 @@ Recommended Render service configuration:
 - Build command: `pip install -r requirements.txt`
 - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - Environment: Python 3.x
-- Add secret env var: `OPENAI_API_KEY`
+- Add secret env vars: `ADMIN_PASSWORD`, `ADMIN_COOKIE_SECRET`
+- Add secret env var if you use LLM answers: `OPENAI_API_KEY`
+- Optional analytics salt: `ANALYTICS_SALT`
 
 ### Notes
 - `backend/requirements.txt` contains the runtime dependencies.
 - `backend/.env` is used locally for environment variables, but secrets should be configured in Render.
 - Render should be connected to the GitHub `main` branch for automatic deploys.
 - `render.yaml` at the repo root is a Render manifest that stores the service settings in source control.
+- If startup fails with `ADMIN_PASSWORD is required.` or `ADMIN_COOKIE_SECRET is required.`, set those secrets in Render before redeploying.
 
 ## Admin workflow
 
