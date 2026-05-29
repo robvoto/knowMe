@@ -44,18 +44,30 @@ Recommended Render service configuration:
 
 ## Logging and analytics
 
-KnowMe logs question interactions to `backend/data/questions.log`.
+KnowMe logs question interactions to both:
+
+- `backend/data/questions.log` for quick human-readable inspection
+- `backend/data/question_events.jsonl` for structured analytics
 
 Each row contains:
 
 - Timestamp
+- Request id
+- Anonymous browser `client_id`
+- Browser `session_id`
+- Request route (`/ask` or `/api/ask`)
+- Source page/path (`/` vs `/admin`)
+- Optional hashed IP (`client_ip_hash`) when `ANALYTICS_SALT` is configured
 - Optional `name` and `company`
 - Original question (`q=`)
 - Normalized question (`q_norm=`)
+- Canonical grouped question (`q_canonical=`)
 
-This supports cleaner analytics by grouping similar questions together.
+This supports cleaner analytics by grouping similar questions together and separating repeated tests from likely distinct visitors.
 
 The app also writes intent events to `backend/data/intent_log.jsonl` for internal analysis.
+
+To enable privacy-preserving hashed IP counts, set `ANALYTICS_SALT` in the backend environment. Raw IP addresses are not stored.
 
 ## Question normalization
 

@@ -4,34 +4,64 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KnowMe — CV Q&A</title>
-  <link rel="stylesheet" href="/static/main-style.css">
+  <title>KnowMe - CV Q&A</title>
+  <link rel="stylesheet" href="/static/main-style.css?v=hero3">
 </head>
 
 <body>
   <div class="page">
     <div class="hero">
-      <h1>KnowMe — Interactive CV Assistant</h1>
-      <p>Ask recruiter-style questions about Rob’s experience, delivery, capability, and STAR examples.</p>
+      <div class="hero-topline">
+        <div class="hero-brand">
+          <span class="hero-logo">KnowMe</span>
+        </div>
+      </div>
+
+      <div class="hero-main">
+        <div class="hero-copy">
+          <h1>Explore Rob Voto's experience.</h1>
+          <p class="hero-kicker">Senior Business Analyst, Sydney</p>
+          <p>This app helps hiring teams understand Rob's delivery background, project work, and role fit without reading the full CV line by line.</p>
+        </div>
+
+        <div class="hero-stat-grid">
+          <article>
+            <strong>Fit</strong>
+            <span>Quick role-fit checks</span>
+          </article>
+          <article>
+            <strong>Proof</strong>
+            <span>CV-backed answers</span>
+          </article>
+          <article>
+            <strong>Examples</strong>
+            <span>Project examples</span>
+          </article>
+          <article>
+            <strong>Questions</strong>
+            <span>Ask follow-ups</span>
+          </article>
+        </div>
+      </div>
     </div>
 
     <div class="card">
-      <div class="section-label">Suggested recruiter questions</div>
+      <div class="section-label">Questions to ask about Rob</div>
       <div class="examples">
-        <button class="ex sample" data-q="What API experience does Rob have? Give concrete examples.">API experience</button>
-        <button class="ex sample" data-q="Has Rob used BPMN? Give concrete project examples.">BPMN examples</button>
-        <button class="ex sample" data-q="What tools has Rob used across business analysis, testing, and delivery?">Tools used</button>
-        <button class="ex sample" data-q="What government departments or industries has Rob worked in?">Industries</button>
-        <button class="ex sample" data-q="What experience does Rob have with data analysis, SQL, or reporting?">Data / SQL</button>
-        <button class="ex sample" data-q="What experience does Rob have with Agile, Scrum, and delivery collaboration?">Agile / Scrum</button>
-        <button class="ex sample" data-q="Has Rob worked with vendors, external teams, or difficult stakeholders? Give examples.">Stakeholder management</button>
-        <button class="ex sample" data-q="What experience does Rob have writing user stories, requirements, or acceptance criteria?">Requirements</button>
-        <button class="ex sample" data-q="Tell me about a time Rob improved a process using a STAR example.">STAR process improvement</button>
-        <button class="ex sample" data-q="Describe a difficult stakeholder situation and how Rob kept alignment using a STAR example.">STAR difficult stakeholder</button>
-        <button class="ex sample" data-q="What experience does Rob have in testing, UAT, or quality assurance?">Testing / UAT</button>
-        <button class="ex sample" data-q="Why would Rob be a strong fit for a senior business analyst or technical BA role?">Why Rob</button>
+        <button type="button" class="ex sample" data-q="Why would Rob be a strong fit for a senior business analyst or technical BA role?">Why Rob</button>
+        <button type="button" class="ex sample" data-q="What government departments or industries has Rob worked in?">Industries</button>
+        <button type="button" class="ex sample" data-q="Has Rob worked with vendors, external teams, or difficult stakeholders? Give examples.">Stakeholder management</button>
+        <button type="button" class="ex sample" data-q="What experience does Rob have writing user stories, requirements, or acceptance criteria?">Requirements</button>
+        <button type="button" class="ex sample" data-q="What experience does Rob have with Agile, Scrum, and delivery collaboration?">Agile / Scrum</button>
+        <button type="button" class="ex sample" data-q="What experience does Rob have in testing, UAT, or quality assurance?">Testing / UAT</button>
+        <button type="button" class="ex sample" data-q="What experience does Rob have with data analysis, SQL, or reporting?">Data / SQL</button>
+        <button type="button" class="ex sample" data-q="What API experience does Rob have? Give concrete examples.">API experience</button>
+        <button type="button" class="ex sample" data-q="Has Rob used BPMN? Give concrete project examples.">BPMN examples</button>
+        <button type="button" class="ex sample" data-q="What tools has Rob used across business analysis, testing, and delivery?">Tools used</button>
+        <button type="button" class="ex sample" data-q="Tell me about a time Rob improved a process. Give a clear example.">Process improvement example</button>
+        <button type="button" class="ex sample" data-q="Describe a difficult stakeholder situation and how Rob kept alignment. Give a clear example.">Difficult stakeholder example</button>
       </div>
-      <p class="tip">Tip: click a sample to load it into the question field, then edit it for your specific needs.</p>
+      <p class="tip">Click a question to load it, then tailor it to the role or conversation you have in mind.</p>
     </div>
 
     <div class="card">
@@ -42,37 +72,71 @@
       </div>
       <input id="q" type="text" placeholder="Example: Has Rob worked with vendors, external teams, or difficult stakeholders?" />
       <div class="ask-footer">
-        <label class="checkbox-label"><input id="use_llm" type="checkbox" checked /> Use LLM rewrite</label>
-        <label class="checkbox-label"><input id="detailed_answer" type="checkbox" /> More detailed answer</label>
-        <button id="askBtn">Ask question</button>
+        <div class="option-row">
+          <label class="checkbox-label"><input id="use_llm" type="checkbox" checked /> Use AI rewrite</label>
+          <span class="info-tip" tabindex="0" data-tip="Rewrites the answer into a cleaner, more polished summary after the CV evidence is retrieved.">?</span>
+          <label class="checkbox-label"><input id="detailed_answer" type="checkbox" /> More detail</label>
+          <span class="info-tip" tabindex="0" data-tip="Adds one extra concrete example or supporting point when the material supports it.">?</span>
+        </div>
+        <button id="askBtn" type="button">Ask question</button>
       </div>
-      <div class="small ask-note">Use LLM rewrite: send the retrieved answer to the OpenAI model for a cleaner, recruiter-friendly response. Detailed answer adds one extra concrete example or evidence point.</div>
-      <div id="status" class="status-line">Checking backend status...</div>
+      <div id="status" class="status-line"></div>
     </div>
 
     <div class="card">
       <div class="answer-header">Answer</div>
-      <div class="status-row">
-        <span id="answerSource" class="status-chip">Source: retrieval</span>
-        <span id="answerLength" class="status-chip">Answer length: 0</span>
-      </div>
       <div id="pretty">(no answer yet)</div>
       <div class="answer-actions">
-        <button id="copyBtn" class="secondary">Copy answer</button>
-        <button id="clearBtn" class="secondary">Clear</button>
+        <button id="copyBtn" class="secondary" type="button">Copy answer</button>
+        <button id="clearBtn" class="secondary" type="button">Clear</button>
       </div>
       <div class="followup-section">
         <div class="section-label">Follow-up suggestions</div>
         <div class="followups" id="followups"></div>
       </div>
-      <p class="footer-note">If the answer is too general, try making your question more specific or enable AI rewriting for a more polished response.</p>
+      <p class="footer-note">If the answer is too general, make the question more specific or turn on AI rewrite for a more polished version.</p>
     </div>
+
+    <footer class="site-footer">
+      <p>&copy; 2026 Rob Voto &middot; KnowMe interactive CV assistant &middot; Questions may be logged for product improvement.</p>
+    </footer>
   </div>
 
   <script>
+    function createClientId(prefix = 'km') {
+      if (window.crypto?.randomUUID) {
+        return `${prefix}_${window.crypto.randomUUID()}`;
+      }
+      return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function getStoredId(storage, key, prefix) {
+      try {
+        const existing = storage.getItem(key);
+        if (existing) {
+          return existing;
+        }
+        const created = createClientId(prefix);
+        storage.setItem(key, created);
+        return created;
+      } catch (error) {
+        return createClientId(prefix);
+      }
+    }
+
+    function buildClientContext(sourcePage) {
+      return {
+        request_id: createClientId('req'),
+        client_id: getStoredId(window.localStorage, 'knowme_client_id', 'client'),
+        session_id: getStoredId(window.sessionStorage, 'knowme_session_id', 'session'),
+        source_page: sourcePage,
+        source_path: window.location.pathname
+      };
+    }
+
     function setStatus(text, isError = false) {
       const status = document.getElementById('status');
-      status.textContent = text;
+      status.textContent = text || '';
       status.style.color = isError ? '#b62f2f' : 'var(--muted)';
     }
 
@@ -83,7 +147,16 @@
         body: JSON.stringify(data)
       });
       if (!res.ok) {
-        throw new Error(`Request failed: ${res.status}`);
+        let message = `Request failed: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) {
+            message = body.detail;
+          }
+        } catch (error) {
+          // Keep the generic HTTP status when the error body is not JSON.
+        }
+        throw new Error(message);
       }
       return await res.json();
     }
@@ -91,17 +164,19 @@
     async function loadReadyState() {
       try {
         const resp = await fetch('/ready');
+        if (!resp.ok) throw new Error('Backend responded with error');
         const ready = await resp.json();
-        const statusText = ready.ok ? `Ready: CV loaded=${ready.cv_loaded}, STAR loaded=${ready.star_loaded}` : 'Not ready yet';
-        setStatus(statusText);
+        if (!ready.ok) {
+          setStatus('Backend content is not ready yet.', true);
+          document.getElementById('askBtn').disabled = true;
+        }
       } catch (error) {
         setStatus('Backend unavailable', true);
+        const askBtn = document.getElementById('askBtn');
+        askBtn.disabled = true;
+        askBtn.style.opacity = '0.5';
+        askBtn.title = 'Backend is currently offline';
       }
-    }
-
-    function updateSource(source) {
-      const chip = document.getElementById('answerSource');
-      chip.textContent = `Source: ${source || 'retrieval'}`;
     }
 
     function updateAnswer(text) {
@@ -109,7 +184,6 @@
       pretty.textContent = text;
       const copyBtn = document.getElementById('copyBtn');
       copyBtn.style.display = text && text !== '(no answer yet)' ? 'inline-flex' : 'none';
-      document.getElementById('answerLength').textContent = `Length: ${text ? text.length : 0}`;
     }
 
     function buildFollowUps(question) {
@@ -134,7 +208,7 @@
         add('Give examples of Rob working with stakeholders or vendors.');
       }
       if (/(star|example|challenge|situation|task|action|result)/.test(normalized)) {
-        add('Describe a time Rob improved a process using STAR format.');
+        add('Describe a time Rob improved a process. Give a clear example.');
       }
       if (/(fit|strong fit|good fit|why would|why is)/.test(normalized)) {
         add('Why would Rob be a strong fit for a senior business analyst role?');
@@ -147,9 +221,9 @@
       }
 
       const defaultFollowups = [
-        'What specific tools or platforms did Rob use in delivery and testing?',
+        'Why would Rob be a strong fit for a senior business analyst role?',
         'Give examples of Rob working with stakeholders or vendors.',
-        'Describe a time Rob improved a process using STAR format.',
+        'Describe a time Rob improved a process. Give a clear example.',
         'How does Rob approach data analysis or reporting in projects?',
         'What experience does Rob have with BPMN or process mapping?'
       ];
@@ -163,13 +237,12 @@
     function renderFollowUps(question = '', backendSuggestions = null) {
       const followups = (backendSuggestions && backendSuggestions.length) ? backendSuggestions : buildFollowUps(question);
       document.getElementById('followups').innerHTML = followups
-        .map(q => `<button class="ex followup" data-q="${q}">${q}</button>`)
+        .map(q => `<button type="button" class="ex followup" data-q="${q}">${q}</button>`)
         .join('');
       document.querySelectorAll('#followups .followup').forEach(btn => {
         btn.addEventListener('click', () => {
           const q = btn.dataset.q;
           document.getElementById('q').value = q;
-          setStatus('Follow-up suggestion loaded.');
           renderFollowUps(q);
         });
       });
@@ -187,7 +260,6 @@
       btn.addEventListener('click', () => {
         const q = btn.dataset.q;
         document.getElementById('q').value = q;
-        setStatus('Sample question loaded.');
         renderFollowUps(q);
       });
     });
@@ -204,12 +276,21 @@
         return;
       }
 
-      updateAnswer('Thinking…');
-      updateSource('retrieval');
-      setStatus('Sending question...');
+      const askBtn = document.getElementById('askBtn');
+      askBtn.disabled = true;
+      updateAnswer('Thinking...');
+      setStatus('');
 
       try {
-        const resp = await postJSON('/ask', { question, use_llm, debug: false, detail_level: detailed, name, company });
+        const resp = await postJSON('/ask', {
+          question,
+          use_llm,
+          debug: false,
+          detail_level: detailed,
+          name,
+          company,
+          ...buildClientContext('landing')
+        });
         let text = '';
         if (typeof resp.answer === 'string') {
           text = resp.answer;
@@ -219,12 +300,19 @@
           text = JSON.stringify(resp, null, 2);
         }
         updateAnswer(text);
-        updateSource(resp.answer_source || (use_llm ? 'llm' : 'retrieval'));
-        setStatus(resp.answer_source === 'llm' ? 'AI-enhanced answer loaded.' : 'Answer loaded from retrieval.');
         renderFollowUps(question, resp.follow_up_questions || null);
+        if (resp.llm_error) {
+          setStatus('AI rewrite failed; showing retrieved evidence.', true);
+        } else if (resp.answer_source === 'llm') {
+          setStatus('AI rewrite used.');
+        } else {
+          setStatus('Showing retrieved evidence.');
+        }
       } catch (error) {
         updateAnswer('(error loading answer)');
         setStatus(error.message || 'Failed to get an answer.', true);
+      } finally {
+        askBtn.disabled = false;
       }
     });
 
@@ -242,4 +330,5 @@
     loadReadyState();
   </script>
 </body>
+
 </html>

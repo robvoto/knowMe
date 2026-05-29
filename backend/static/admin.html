@@ -3,19 +3,32 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KnowMe — Admin</title>
+  <title>KnowMe - Admin</title>
   <link rel="stylesheet" href="/static/main-style.css">
 </head>
 <body class="admin-page">
-  <div class="admin-card">
-    <h1>KnowMe — Admin</h1>
+  <div class="admin-card" id="loginCard">
+    <h1>KnowMe - Admin</h1>
+    <p class="small">Enter the admin password to load CV text, ingest STAR examples, and inspect analytics.</p>
+    <div class="row" style="margin-bottom: 10px;">
+      <input id="adminPassword" type="password" placeholder="Admin password" autocomplete="current-password" />
+      <button id="loginBtn" type="button">Unlock admin</button>
+    </div>
+    <span id="loginStatus" class="status-chip">Waiting</span>
+  </div>
+
+  <div class="admin-card" id="adminApp" hidden>
+    <h1>KnowMe - Admin</h1>
     <p class="small">Load CV text, ingest STAR examples, and run recruiter-style questions here.</p>
 
     <div class="admin-section">
-      <h2>Reload current backend state</h2>
+      <div class="row" style="justify-content: space-between; align-items: center;">
+        <h2>Reload current backend state</h2>
+        <button id="logoutBtn" type="button" class="secondary">Lock</button>
+      </div>
       <div class="row">
-        <button id="reloadBtn">Refresh status</button>
-        <span id="reloadStatus" class="status-chip">Not loaded</span>
+        <button id="reloadBtn" type="button">Refresh status</button>
+        <span id="reloadStatus" class="status-chip">Waiting</span>
       </div>
       <div class="row">
         <span id="cvMeta" class="status-chip">CV not loaded</span>
@@ -51,12 +64,12 @@
       <h2>1) Replace CV text</h2>
       <p class="small">Only replace the full CV for major updates. This is not a daily edit area.</p>
       <div class="row" style="margin-bottom: 10px; gap: 10px;">
-        <button id="loadCvBtn" class="secondary">Load current CV text</button>
+        <button id="loadCvBtn" type="button" class="secondary">Load current CV text</button>
         <span class="status-chip">Editable only when loaded</span>
       </div>
       <textarea id="cv" placeholder="Paste your CV here..."></textarea>
       <div class="row" style="margin-top: 10px;">
-        <button id="ingestBtn">Replace CV</button>
+        <button id="ingestBtn" type="button">Replace CV</button>
         <span id="ingestStatus" class="status-chip">Waiting</span>
       </div>
     </div>
@@ -65,12 +78,12 @@
       <h2>2) Ingest STAR examples</h2>
       <p class="small">Update STAR examples when you want to refresh behavioural examples or add new use cases.</p>
       <div class="row" style="margin-bottom: 10px; gap: 10px;">
-        <button id="loadStarBtn" class="secondary">Load current STAR text</button>
+        <button id="loadStarBtn" type="button" class="secondary">Load current STAR text</button>
         <span class="status-chip">Editable only when loaded</span>
       </div>
       <textarea id="star" placeholder="Paste your STAR examples here..."></textarea>
       <div class="row" style="margin-top: 10px;">
-        <button id="ingestStarBtn">Ingest STAR</button>
+        <button id="ingestStarBtn" type="button">Ingest STAR</button>
         <span id="starStatus" class="status-chip">Waiting</span>
       </div>
       <p class="small">STAR blocks are used to answer behaviour and example-based questions.</p>
@@ -88,7 +101,7 @@
           <label><input id="use_llm" type="checkbox" /> Use LLM rewrite</label>
           <label><input id="debug" type="checkbox" checked /> Debug</label>
         </div>
-        <button id="askBtn">Ask</button>
+        <button id="askBtn" type="button">Ask</button>
       </div>
       <p class="small">When debug is enabled, the response includes context and scoring details.</p>
     </div>
@@ -97,7 +110,7 @@
       <h2>Response</h2>
       <pre id="out">(no output yet)</pre>
       <div class="row">
-        <button id="copyOut" class="secondary">Copy response</button>
+        <button id="copyOut" type="button" class="secondary">Copy response</button>
       </div>
     </div>
 
@@ -105,78 +118,173 @@
       <h2>Debug output</h2>
       <pre id="debugOut">(no debug output yet)</pre>
     </div>
+
+    <footer class="site-footer admin-footer">
+      <p>&copy; 2026 Rob Voto &middot; KnowMe admin console &middot; Recruiter questions may be logged for product improvement.</p>
+    </footer>
   </div>
 
   <script>
+    function createClientId(prefix = 'km') {
+      if (window.crypto?.randomUUID) {
+        return `${prefix}_${window.crypto.randomUUID()}`;
+      }
+      return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function getStoredId(storage, key, prefix) {
+      try {
+        const existing = storage.getItem(key);
+        if (existing) {
+          return existing;
+        }
+        const created = createClientId(prefix);
+        storage.setItem(key, created);
+        return created;
+      } catch (error) {
+        return createClientId(prefix);
+      }
+    }
+
+    function buildClientContext(sourcePage) {
+      return {
+        request_id: createClientId('req'),
+        client_id: getStoredId(window.localStorage, 'knowme_client_id', 'client'),
+        session_id: getStoredId(window.sessionStorage, 'knowme_session_id', 'session'),
+        source_page: sourcePage,
+        source_path: window.location.pathname
+      };
+    }
+
     async function postJSON(url, data) {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        cache: 'no-store',
+        credentials: 'same-origin'
       });
       if (!res.ok) {
-        throw new Error(`Request failed: ${res.status}`);
+        let message = `Request failed: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) {
+            message = body.detail;
+          }
+        } catch (error) {
+          // Keep the generic HTTP status when the error body is not JSON.
+        }
+        throw new Error(message);
       }
       return await res.json();
     }
 
-    async function loadAdminState() {
-      try {
-        const resp = await fetch('/api/admin_state');
-        const data = await resp.json();
-        document.getElementById('reloadStatus').textContent = `CV loaded=${data.cv_loaded}, STAR loaded=${data.star_loaded}`;
-        document.getElementById('cvMeta').textContent = `CV ${data.cv_loaded ? `loaded (${data.cv_length} chars)` : 'not loaded'}`;
-        document.getElementById('starMeta').textContent = `STAR ${data.star_loaded ? `loaded (${data.star_length} chars)` : 'not loaded'}`;
-        window.currentAdminState = data;
-      } catch (error) {
-        document.getElementById('reloadStatus').textContent = `Reload failed`;
+    function updateStatus(elementId, message) {
+      document.getElementById(elementId).textContent = message;
+    }
+
+    function renderList(elementId, items, formatItem) {
+      const element = document.getElementById(elementId);
+      element.innerHTML = items.length ? items.map(formatItem).join('') : '<li>None</li>';
+    }
+
+    function showLogin(message = '') {
+      document.getElementById('loginCard').hidden = false;
+      document.getElementById('adminApp').hidden = true;
+      if (message) {
+        updateStatus('loginStatus', message);
       }
     }
 
+    function showApp() {
+      document.getElementById('loginCard').hidden = true;
+      document.getElementById('adminApp').hidden = false;
+    }
+
+    async function loadAdminState() {
+      const resp = await fetch('/api/admin_state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!resp.ok) {
+        throw new Error(`Request failed: ${resp.status}`);
+      }
+      const data = await resp.json();
+      updateStatus('reloadStatus', `CV loaded=${data.cv_loaded}, STAR loaded=${data.star_loaded}`);
+      updateStatus('cvMeta', `CV ${data.cv_loaded ? `loaded (${data.cv_length} chars)` : 'not loaded'}`);
+      updateStatus('starMeta', `STAR ${data.star_loaded ? `loaded (${data.star_length} chars)` : 'not loaded'}`);
+      window.currentAdminState = data;
+      return data;
+    }
+
     async function loadCvText() {
-      await loadAdminState();
-      const data = window.currentAdminState;
-      if (data?.cv_text) {
+      const data = await loadAdminState();
+      if (typeof data.cv_text === 'string') {
         document.getElementById('cv').value = data.cv_text;
-        document.getElementById('ingestStatus').textContent = 'CV text loaded';
+        updateStatus('ingestStatus', data.cv_text ? 'CV text loaded' : 'CV text is empty');
       }
     }
 
     async function loadStarText() {
-      await loadAdminState();
-      const data = window.currentAdminState;
-      if (data?.star_text) {
+      const data = await loadAdminState();
+      if (typeof data.star_text === 'string') {
         document.getElementById('star').value = data.star_text;
-        document.getElementById('starStatus').textContent = 'STAR text loaded';
+        updateStatus('starStatus', data.star_text ? 'STAR text loaded' : 'STAR text is empty');
       }
     }
 
     async function reloadState() {
-      await loadAdminState();
       try {
-        const analyticsResp = await fetch('/api/analytics');
-        const analytics = await analyticsResp.json();
-        document.getElementById('analyticsStatus').textContent = `Questions=${analytics.question_count}, Events=${analytics.intent_event_count}`;
-        document.getElementById('topQuestions').innerHTML = analytics.top_canonical_questions
-          .map(item => `<li>${item.question} (${item.count})</li>`)
-          .join('');
-        document.getElementById('topNormalized').innerHTML = analytics.top_normalized_questions
-          .map(item => `<li>${item.question} (${item.count})</li>`)
-          .join('');
-        document.getElementById('intentCounts').innerHTML = analytics.intent_counts
-          .map(item => `<li>${item.intent}: ${item.count}</li>`)
-          .join('');
-        document.getElementById('recentQuestions').innerHTML = analytics.recent_questions
-          .map(item => `<li>${item.ts}: ${item.question}</li>`)
-          .join('');
+        await loadAdminState();
       } catch (error) {
-        document.getElementById('analyticsStatus').textContent = `Analytics failed`;
+        if (String(error.message || '').includes('401')) {
+          showLogin('Admin password required.');
+          return;
+        }
+        updateStatus('reloadStatus', `Reload failed: ${error.message}`);
+      }
+
+      try {
+        const analyticsResp = await fetch('/api/analytics', { cache: 'no-store', credentials: 'same-origin' });
+        if (!analyticsResp.ok) {
+          throw new Error(`Request failed: ${analyticsResp.status}`);
+        }
+        const analytics = await analyticsResp.json();
+        updateStatus('analyticsStatus', `Questions=${analytics.question_count}, Clients=${analytics.unique_client_count}, Sessions=${analytics.unique_session_count}, Events=${analytics.intent_event_count}`);
+        renderList('topQuestions', analytics.top_canonical_questions || [], item => `<li>${item.question} (${item.count})</li>`);
+        renderList('topNormalized', analytics.top_normalized_questions || [], item => `<li>${item.question} (${item.count})</li>`);
+        renderList('intentCounts', analytics.intent_counts || [], item => `<li>${item.intent}: ${item.count}</li>`);
+        renderList('recentQuestions', analytics.recent_questions || [], item => `<li>${item.ts}: [${item.source_page || '-'} via ${item.request_path || '-'}] ${item.question}</li>`);
+      } catch (error) {
+        updateStatus('analyticsStatus', `Analytics failed: ${error.message}`);
       }
     }
 
-    async function updateStatus(elementId, message) {
-      document.getElementById(elementId).textContent = message;
-    }
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const password = document.getElementById('adminPassword').value;
+      updateStatus('loginStatus', 'Checking...');
+      try {
+        await postJSON('/api/admin_login', { password });
+        document.getElementById('adminPassword').value = '';
+        showApp();
+        await reloadState();
+      } catch (error) {
+        showLogin(`Login failed: ${error.message}`);
+      }
+    });
+
+    document.getElementById('adminPassword').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        document.getElementById('loginBtn').click();
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try {
+        await postJSON('/api/admin_logout', {});
+      } catch (error) {
+        // Ignore logout failures and still lock the UI locally.
+      }
+      showLogin('Locked.');
+    });
 
     document.getElementById('reloadBtn').addEventListener('click', reloadState);
     document.getElementById('loadCvBtn').addEventListener('click', loadCvText);
@@ -184,11 +292,11 @@
 
     document.getElementById('ingestBtn').addEventListener('click', async () => {
       const text = document.getElementById('cv').value;
-      updateStatus('ingestStatus', 'Uploading…');
+      updateStatus('ingestStatus', 'Uploading...');
       try {
         const resp = await postJSON('/api/ingest_cv', { text });
-        updateStatus('ingestStatus', `✅ ${resp.status} (${resp.body_length || resp.length || 0})`);
-        reloadState();
+        updateStatus('ingestStatus', `OK ${resp.status} (${resp.body_length || resp.length || 0})`);
+        await reloadState();
       } catch (error) {
         updateStatus('ingestStatus', `Error: ${error.message}`);
       }
@@ -196,11 +304,11 @@
 
     document.getElementById('ingestStarBtn').addEventListener('click', async () => {
       const text = document.getElementById('star').value;
-      updateStatus('starStatus', 'Uploading…');
+      updateStatus('starStatus', 'Uploading...');
       try {
         const resp = await postJSON('/api/ingest_star', { text });
-        updateStatus('starStatus', `✅ ${resp.status} (${resp.star_length || resp.length || 0})`);
-        reloadState();
+        updateStatus('starStatus', `OK ${resp.status} (${resp.star_length || resp.length || 0})`);
+        await reloadState();
       } catch (error) {
         updateStatus('starStatus', `Error: ${error.message}`);
       }
@@ -214,12 +322,10 @@
       const company = document.getElementById('company').value.trim();
       document.getElementById('debugOut').textContent = '(waiting for response)';
       try {
-        const resp = await postJSON('/api/ask', { question, use_llm, debug, name, company });
-        if (debug) {
-          document.getElementById('out').textContent = JSON.stringify(resp, null, 2);
-        } else {
-          document.getElementById('out').textContent = typeof resp.answer === 'string' ? resp.answer : resp.answer.join('\n');
-        }
+        const resp = await postJSON('/api/ask', { question, use_llm, debug, name, company, ...buildClientContext('admin') });
+        document.getElementById('out').textContent = debug
+          ? JSON.stringify(resp, null, 2)
+          : (typeof resp.answer === 'string' ? resp.answer : resp.answer.join('\n'));
         document.getElementById('debugOut').textContent = JSON.stringify({
           normalized: resp.q_norm,
           canonical: resp.q_canonical,
@@ -233,6 +339,9 @@
       } catch (error) {
         document.getElementById('out').textContent = `Error: ${error.message}`;
         document.getElementById('debugOut').textContent = '(no debug output)';
+        if (String(error.message || '').includes('401')) {
+          showLogin('Admin password required.');
+        }
       }
     });
 
@@ -243,9 +352,10 @@
       }
     });
 
-    reloadState();
     document.getElementById('cv').value = '';
     document.getElementById('star').value = '';
+    showLogin('Waiting');
+    reloadState();
   </script>
 </body>
 </html>

@@ -1,13 +1,38 @@
+r"""
+KnowMe Backend API
+
+HOW TO RUN (Command Prompt):
+---------------------------
+1. Navigate to the project root:
+   cd /d E:\Programming\knowRob\knowMe
+2. Activate the virtual environment:
+   .venv\Scripts\activate
+3. Run the application:
+   set PYTHONPATH=.
+   python -m backend.app.main
+
+This module serves as the core engine for the KnowMe Interactive CV. It handles:
+1. Document Ingestion (CV and STAR examples).
+2. Heuristic-based parsing of CV text into structured entries.
+3. Intent classification and keyword-based retrieval for RAG (Retrieval-Augmented Generation).
+4. Integration with OpenAI for natural language response generation.
+"""
 import string
 import os
 import re
 import json
+import hashlib
+import time
+import uuid
+import secrets
 from pathlib import Path
 from datetime import datetime
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
+import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 
@@ -21,11 +46,14 @@ DATA_DIR = BACKEND_DIR / "data"
 CV_FILE = DATA_DIR / "cv.txt"
 STAR_FILE = DATA_DIR / "star.txt"
 QUESTION_LOG_FILE = DATA_DIR / "questions.log"
+QUESTION_EVENT_LOG_FILE = DATA_DIR / "question_events.jsonl"
 
 TOP_QUESTIONS = 20
 MAX_QUESTION_CHARS = 300
 MIN_LINE_LENGTH = 25
+UNKNOWN_LOG_VALUES = {"", "-", "unknown"}
 
+# Words that should not be filtered out during keyword extraction despite being short.
 IMPORTANT_SHORT_WORDS = {
     "api", 
     "sql", 
@@ -38,6 +66,7 @@ IMPORTANT_SHORT_WORDS = {
     "pm"
 }
 
+# Mapping of user terms to CV-specific keywords to improve retrieval hits.
 SEARCH_TERM_ALIASES = {
     "located": ["location"],
     "location": ["located"],
@@ -61,6 +90,7 @@ SEARCH_TERM_ALIASES = {
     "requirements": ["user stories", "acceptance criteria"],
 }
 
+# Patterns used to group similar user questions for analytics reporting.
 QUESTION_CANONICAL_PATTERNS = [
     (re.compile(r"\b(strong fit|good fit|fit for|why (?:would|is) .+ fit)\b"), "why would <candidate> be a strong fit"),
     (re.compile(r"\b(industry|industries|department|departments|sector|sectors)\b.*\b(work|worked|experience|background)\b"), "what industries has <candidate> worked in"),
@@ -74,6 +104,7 @@ QUESTION_CANONICAL_PATTERNS = [
     (re.compile(r"\b(testing|uat|quality assurance|qa|user acceptance)\b"), "what experience does <candidate> have in testing and quality assurance"),
 ]
 
+# Logic-based triggers used to switch System Prompts for the LLM.
 INTENT_PATTERNS = [
     (re.compile(r"\b(star|tell me about a time|describe a situation|give an example|scenario|challenge|result|action|task)\b"), "star"),
     (re.compile(r"\b(bpmn|business process model and notation|process mapping)\b"), "bpmn"),
@@ -87,6 +118,7 @@ INTENT_PATTERNS = [
     (re.compile(r"\b(strong fit|good fit|why\b|fit for|summarise|summarize|why is)\b"), "fit"),
 ]
 
+# Manual weighting for specific skills to ensure they surface in the 'Relevant Experience' context.
 PHRASE_WEIGHTS = {
     "api": 3,
     "bpmn": 4,
@@ -105,6 +137,7 @@ PHRASE_WEIGHTS = {
     "business analyst": 4,
 }
 
+# Pre-defined follow-up questions triggered by detected user intent.
 FOLLOWUP_SUGGESTIONS: dict[str, list[str]] = {
     "api": [
         "What tools or platforms has Rob used alongside APIs in delivery projects?",
@@ -196,6 +229,10 @@ STAR_TEXT = ""
 load_dotenv(BACKEND_DIR / ".env")
 
 INTENT_LOG_PATH = Path(DATA_DIR / "intent_log.jsonl")
+ANALYTICS_SALT = os.getenv("ANALYTICS_SALT", "").strip()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip() or "KnowMeAdmin2026!"
+ADMIN_COOKIE_SECRET = os.getenv("ADMIN_COOKIE_SECRET", "").strip() or ADMIN_PASSWORD or ANALYTICS_SALT or "knowme-admin"
+ADMIN_COOKIE_NAME = "knowme_admin"
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -226,7 +263,10 @@ def clean_line(text: str) -> str:
 
 
 def normalize_question_text(question: str) -> str:
-    """Normalize a candidate question for logging and analytics."""
+    """
+    Cleans and standardizes user input by removing punctuation, filler words,
+    and mapping synonyms (e.g., 'BA' -> 'Business Analyst').
+    """
     normalized = question or ""
     normalized = normalized.strip().lower()
     normalized = re.sub(r"\([^)]*\)", "", normalized)
@@ -246,6 +286,10 @@ def normalize_question_text(question: str) -> str:
 
 
 def classify_question_intent(question: str) -> str:
+    """
+    Identifies the primary topic of the question (e.g., 'star', 'api', 'tools')
+    to determine which follow-up questions and system prompts to use.
+    """
     normalized = normalize_question_text(question)
     for pattern, label in INTENT_PATTERNS:
         if pattern.search(normalized):
@@ -254,7 +298,10 @@ def classify_question_intent(question: str) -> str:
 
 
 def canonical_question_text(question: str) -> str:
-    """Map normalized questions to canonical question groups for analytics."""
+    """
+    Maps a varied user question to a standard 'Canonical' version to 
+    aggregate data in the analytics dashboard.
+    """
     normalized = normalize_question_text(question)
     if not normalized:
         return ""
@@ -284,21 +331,106 @@ def get_file_metadata(path: Path) -> dict[str, str | int | float]:
     }
 
 
+def normalize_log_identity(value: str | None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return "-"
+    return text
+
+
+def is_meaningful_log_value(value: str | None) -> bool:
+    return normalize_log_identity(value).lower() not in UNKNOWN_LOG_VALUES
+
+
+def sanitize_log_value(value: str | None) -> str:
+    text = normalize_log_identity(value)
+    text = text.replace("\r", " ").replace("\n", " ").replace("|", "/")
+    return re.sub(r"\s+", " ", text).strip() or "-"
+
+
+def hash_analytics_value(value: str | None) -> str | None:
+    text = (value or "").strip()
+    if not text or not ANALYTICS_SALT:
+        return None
+    digest = hashlib.sha256(f"{ANALYTICS_SALT}:{text}".encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def extract_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or None
+
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
+
+    if request.client and request.client.host:
+        return request.client.host.strip() or None
+
+    return None
+
+
+def derive_source_page(source_page: str | None, source_path: str | None) -> str:
+    if is_meaningful_log_value(source_page):
+        return normalize_log_identity(source_page)
+
+    path = (source_path or "").strip()
+    if path == "/admin":
+        return "admin"
+    if path == "/":
+        return "landing"
+    if path:
+        return path
+    return "-"
+
+
+def build_logging_context(request: Request, payload: dict) -> dict[str, str]:
+    """
+    Assembles metadata about the incoming request for logging, 
+    including hashed IPs and session identifiers for privacy-safe tracking.
+    """
+    referer = (request.headers.get("referer") or "").strip()
+    referer_path = ""
+    if referer:
+        referer_path = urlparse(referer).path.strip()
+
+    source_path = normalize_log_identity(payload.get("source_path") or referer_path)
+    source_page = derive_source_page(payload.get("source_page"), source_path if source_path != "-" else "")
+
+    return {
+        "request_id": normalize_log_identity(payload.get("request_id")) if is_meaningful_log_value(payload.get("request_id")) else uuid.uuid4().hex,
+        "client_id": normalize_log_identity(payload.get("client_id")),
+        "session_id": normalize_log_identity(payload.get("session_id")),
+        "request_path": sanitize_log_value(str(request.url.path)),
+        "source_path": sanitize_log_value(source_path),
+        "source_page": sanitize_log_value(source_page),
+        "referer": sanitize_log_value(referer),
+        "user_agent": sanitize_log_value(request.headers.get("user-agent")),
+        "client_ip_hash": sanitize_log_value(hash_analytics_value(extract_client_ip(request))),
+    }
+
+
 def log_intent_event(
     question: str,
     requested_star: bool,
     included_star: bool,
     star_example_id: str | None,
     reason: str,
+    metadata: dict[str, str] | None = None,
 ):
     event = {
         "ts": datetime.utcnow().isoformat(),
         "question": question,
+        "q_norm": normalize_question_text(question),
+        "q_canonical": canonical_question_text(question),
         "requested_star": requested_star,
         "included_star": included_star,
         "star_example_id": star_example_id,
         "reason": reason,
     }
+    if metadata:
+        event.update(metadata)
     INTENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with INTENT_LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -321,6 +453,10 @@ def parse_question_log_line(line: str) -> dict[str, str]:
 
 
 def read_question_log() -> list[dict[str, str]]:
+    """
+    Reads the pipe-delimited log file and returns a list of 
+    dictionaries for analytics processing.
+    """
     if not QUESTION_LOG_FILE.exists():
         return []
     with QUESTION_LOG_FILE.open("r", encoding="utf-8") as f:
@@ -342,17 +478,41 @@ def read_intent_log() -> list[dict]:
     return events
 
 
+def log_question_event(question: str, name: str | None, company: str | None, metadata: dict[str, str]):
+    event = {
+        "ts": datetime.utcnow().isoformat(),
+        "question": question,
+        "q_norm": normalize_question_text(question),
+        "q_canonical": canonical_question_text(question),
+        "name": normalize_log_identity(name),
+        "company": normalize_log_identity(company),
+        "identity_provided": any(is_meaningful_log_value(value) for value in (name, company)),
+    }
+    event.update(metadata)
+    QUESTION_EVENT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with QUESTION_EVENT_LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
 def analytics_summary() -> dict:
+    """
+    Processes raw log files to generate high-level metrics for the admin 
+    dashboard, including top questions and intent distribution.
+    """
     question_records = read_question_log()
     canonical_counts: dict[str, int] = {}
     normalized_counts: dict[str, int] = {}
     intent_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
 
     for rec in question_records:
         canonical = rec.get("q_canonical", "")
         normalized = rec.get("q_norm", "")
         intent = classify_question_intent(rec.get("q", ""))
+        source_page = rec.get("source_page", "-")
         intent_counts[intent] = intent_counts.get(intent, 0) + 1
+        if source_page:
+            source_counts[source_page] = source_counts.get(source_page, 0) + 1
         if canonical:
             canonical_counts[canonical] = canonical_counts.get(canonical, 0) + 1
         if normalized:
@@ -366,15 +526,40 @@ def analytics_summary() -> dict:
     star_included = sum(1 for e in intent_events if e.get("included_star"))
 
     recent_questions = [
-        {"ts": rec.get("ts", ""), "question": rec.get("q", ""), "canonical": rec.get("q_canonical", "")}
+        {
+            "ts": rec.get("ts", ""),
+            "question": rec.get("q", ""),
+            "canonical": rec.get("q_canonical", ""),
+            "name": rec.get("name", "-"),
+            "company": rec.get("company", "-"),
+            "request_id": rec.get("request_id", "-"),
+            "client_id": rec.get("client_id", "-"),
+            "session_id": rec.get("session_id", "-"),
+            "source_page": rec.get("source_page", "-"),
+            "source_path": rec.get("source_path", "-"),
+            "request_path": rec.get("request_path", "-"),
+            "client_ip_hash": rec.get("client_ip_hash", "-"),
+        }
         for rec in question_records[-10:]
     ][::-1]
 
+    unique_client_ids = {rec.get("client_id", "").strip() for rec in question_records if is_meaningful_log_value(rec.get("client_id"))}
+    unique_session_ids = {rec.get("session_id", "").strip() for rec in question_records if is_meaningful_log_value(rec.get("session_id"))}
+    unique_ip_hashes = {rec.get("client_ip_hash", "").strip() for rec in question_records if is_meaningful_log_value(rec.get("client_ip_hash"))}
+    named_question_count = sum(1 for rec in question_records if any(is_meaningful_log_value(rec.get(field)) for field in ("name", "company")))
+
     return {
         "question_count": len(question_records),
+        "named_question_count": named_question_count,
+        "anonymous_question_count": len(question_records) - named_question_count,
+        "unique_client_count": len(unique_client_ids),
+        "unique_session_count": len(unique_session_ids),
+        "unique_hashed_ip_count": len(unique_ip_hashes),
+        "hashed_ip_enabled": bool(ANALYTICS_SALT),
         "top_canonical_questions": [{"question": q, "count": c} for q, c in top_canonical],
         "top_normalized_questions": [{"question": q, "count": c} for q, c in top_normalized],
         "intent_counts": [{"intent": intent, "count": count} for intent, count in sorted(intent_counts.items(), key=lambda item: item[1], reverse=True)],
+        "source_page_counts": [{"source_page": source, "count": count} for source, count in sorted(source_counts.items(), key=lambda item: item[1], reverse=True)],
         "recent_questions": recent_questions,
         "intent_event_count": len(intent_events),
         "star_trigger_rate": (star_requests / len(intent_events) * 100) if intent_events else 0,
@@ -418,6 +603,9 @@ def count_star_blocks(star_text: str) -> int:
     return sum(1 for ln in star_text.splitlines() if ln.strip().startswith("EXAMPLE "))
 
 def startup_checkup():
+    """
+    Diagnostic routine to verify that critical CV and STAR data files exist and are readable.
+    """
     cwd = os.getcwd()
 
     cv_file = CV_FILE.resolve()
@@ -470,22 +658,37 @@ def dedupe_lines(lines: list[str]) -> list[str]:
     return out
 
 
-def log_question(question: str, name: str | None, company: str | None):
+def log_question(question: str, name: str | None, company: str | None, metadata: dict[str, str]):
     QUESTION_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     norm_question = normalize_question_text(question)
     canonical_question = canonical_question_text(question)
+    fields = {
+        "request_id": metadata.get("request_id", "-"),
+        "client_id": metadata.get("client_id", "-"),
+        "session_id": metadata.get("session_id", "-"),
+        "request_path": metadata.get("request_path", "-"),
+        "source_page": metadata.get("source_page", "-"),
+        "source_path": metadata.get("source_path", "-"),
+        "client_ip_hash": metadata.get("client_ip_hash", "-"),
+        "name": normalize_log_identity(name),
+        "company": normalize_log_identity(company),
+        "q": question,
+        "q_norm": norm_question,
+        "q_canonical": canonical_question,
+    }
+    row = f"{datetime.utcnow().isoformat()} | " + " | ".join(
+        f"{key}={sanitize_log_value(value)}" for key, value in fields.items()
+    )
     with QUESTION_LOG_FILE.open("a", encoding="utf-8") as f:
-        f.write(
-            f"{datetime.utcnow().isoformat()} | "
-            f"name={name or '-'} | "
-            f"company={company or '-'} | "
-            f"q={question} | "
-            f"q_norm={norm_question} | "
-            f"q_canonical={canonical_question}\n"
-        )
+        f.write(row + "\n")
+    log_question_event(question, name, company, metadata)
 
 
 def should_use_star(question: str) -> bool:
+    """
+    Checks if the user is asking for a behavioral example, 
+    triggering the retrieval of STAR-formatted data.
+    """
     normalized = normalize_question_text(question)
     if any(p in normalized for p in STAR_TRIGGER_PHRASES):
         return True
@@ -538,8 +741,8 @@ def split_star_examples(star_text: str) -> list[str]:
 
 def find_relevant_star_examples(star_text: str, question: str, limit: int = 1):
     """
-    Score each STAR block by how many relevant question terms appear in it.
-    Returns (kept_words, top_blocks)
+    Heuristic search through STAR blocks. Scores based on keyword matches 
+    and presence of STAR markers (Situation, Task, etc.).
     """
     blocks = split_star_examples(star_text)
 
@@ -562,6 +765,10 @@ def find_relevant_star_examples(star_text: str, question: str, limit: int = 1):
     return kept_words, top
 
 def build_search_terms(question: str) -> list[str]:
+    """
+    Extracts meaningful keywords from the user question and expands them 
+    using the SEARCH_TERM_ALIASES dictionary.
+    """
     terms: list[str] = []
 
     for w in question.lower().split():
@@ -611,6 +818,13 @@ def _is_role_line(line: str) -> bool:
 
 
 def extract_cv_entries(cv_text: str) -> list[str]:
+    """
+    A heuristic-based line parser that attempts to break a flat CV text file 
+    into logical chunks. It detects:
+    - Organizations (employers)
+    - Roles and Sectors (via pipe separators)
+    - Specific bullet points tied to those organizations.
+    """
     entries: list[str] = []
     current_org = None
     current_section = None
@@ -749,6 +963,10 @@ def extract_cv_entries(cv_text: str) -> list[str]:
 
 
 def find_relevant_sentences(cv_text: str, question: str, limit: int | None = None):
+    """
+    The primary 'Search' engine. Scores CV entries against search terms. 
+    Includes special 'boosting' logic for industry/government-focused queries.
+    """
     if limit is None:
         limit = TOP_QUESTIONS
 
@@ -870,25 +1088,65 @@ def build_system_prompt(question: str, context: str, detail_level: str = "concis
 
 
 def llm_rewrite_answer(question: str, context: str, detail_level: str = "concise") -> str:
+    """
+    Calls the OpenAI API to synthesize a natural language answer based
+    strictly on the retrieved context provided.
+    """
+    start_time = time.time()
     system_prompt = build_system_prompt(question, context, detail_level)
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OpenAI API key is not configured.")
+
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] LLM: Calling OpenAI (model: gpt-4.1-mini)...")
+
     resp = client.responses.create(
         model="gpt-4.1-mini",
-        input=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": f"Question: {question}\n\nCV TEXT:\n{context}",
-            },
-        ],
+        instructions=(
+            system_prompt
+            + "\n\nRewrite the answer as recruiter-friendly prose. "
+            + "Do not copy the retrieved bullets verbatim. "
+            + "Do not use headings, numbered lists, or bullet points. "
+            + "Use 1-2 short paragraphs and keep every claim anchored to the supplied CV text."
+        ),
+        input=f"Question: {question}\n\nCV TEXT:\n{context}",
+        temperature=0.2,
+        max_output_tokens=350,
     )
-    return resp.output_text
+
+    elapsed = time.time() - start_time
+    
+    # Calculate approximate cost for gpt-4o-mini style pricing
+    # Input: $0.15 / 1M tokens | Output: $0.60 / 1M tokens
+    usage = getattr(resp, 'usage', None)
+    cost_str = "Unknown Cost"
+    if usage:
+        in_tokens = usage.input_tokens
+        out_tokens = usage.output_tokens
+        cost = (in_tokens * 0.00000015) + (out_tokens * 0.0000006)
+        cost_str = f"${cost:f}"
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] LLM: Finished in {elapsed:.2f}s | Tokens: {in_tokens} in, {out_tokens} out | Est. Cost: {cost_str}")
+    else:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] LLM: Finished in {elapsed:.2f}s (Usage data unavailable)")
+
+    final_text = (resp.output_text or "").strip()
+    if not final_text:
+        raise RuntimeError("OpenAI returned an empty response.")
+    return final_text
 
 # ─────────────────────────
 # Static / UI
 # ─────────────────────────
+
+def build_admin_cookie() -> str:
+    return hashlib.sha256(f"{ADMIN_COOKIE_SECRET}:admin".encode("utf-8")).hexdigest()
+
+
+def require_admin_auth(request: Request) -> None:
+    token = request.cookies.get(ADMIN_COOKIE_NAME, "")
+    if not token or not secrets.compare_digest(token, build_admin_cookie()):
+        raise HTTPException(status_code=401, detail="Admin login required.")
+
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -900,7 +1158,41 @@ def home():
 
 @app.get("/admin")
 def admin():
-    return FileResponse(STATIC_DIR / "admin.html")
+    return FileResponse(
+        STATIC_DIR / "admin.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
+
+@app.post("/api/admin_login")
+def api_admin_login(payload: dict, response: Response):
+    if not ADMIN_PASSWORD:
+        raise HTTPException(status_code=503, detail="Admin password is not configured.")
+
+    password = (payload.get("password") or "").strip()
+    if not password or not secrets.compare_digest(password, ADMIN_PASSWORD):
+        raise HTTPException(status_code=401, detail="Invalid admin password.")
+
+    response.set_cookie(
+        key=ADMIN_COOKIE_NAME,
+        value=build_admin_cookie(),
+        httponly=True,
+        samesite="strict",
+        secure=False,
+        max_age=60 * 60 * 8,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/admin_logout")
+def api_admin_logout(response: Response):
+    response.delete_cookie(ADMIN_COOKIE_NAME)
+    return {"ok": True}
+
+
+@app.get("/designs")
+def designs():
+    return FileResponse(STATIC_DIR / "designs.html")
 
 
 @app.get("/health")
@@ -930,12 +1222,12 @@ def status():
     }
 
 
-@app.get("/analytics")
+@app.get("/analytics", dependencies=[Depends(require_admin_auth)])
 def analytics():
     return analytics_summary()
 
 
-@app.get("/admin_state")
+@app.get("/admin_state", dependencies=[Depends(require_admin_auth)])
 def admin_state():
     return {
         "cv_loaded": bool(CV_BODY),
@@ -949,17 +1241,17 @@ def admin_state():
     }
 
 
-@app.get("/api/admin_state")
+@app.get("/api/admin_state", dependencies=[Depends(require_admin_auth)])
 def api_admin_state():
     return admin_state()
 
 
-@app.get("/api/analytics")
+@app.get("/api/analytics", dependencies=[Depends(require_admin_auth)])
 def api_analytics():
     return analytics()
 
 
-@app.get("/api/reload")
+@app.get("/api/reload", dependencies=[Depends(require_admin_auth)])
 def api_reload():
     return reload_files()
 
@@ -1003,19 +1295,19 @@ def api_docs():
     }
 
 
-@app.post("/api/ingest_cv")
+@app.post("/api/ingest_cv", dependencies=[Depends(require_admin_auth)])
 def api_ingest_cv(payload: dict):
     return ingest(payload)
 
 
-@app.post("/api/ingest_star")
+@app.post("/api/ingest_star", dependencies=[Depends(require_admin_auth)])
 def api_ingest_star(payload: dict):
     return ingest_star(payload)
 
 
 @app.post("/api/ask")
-def api_ask(payload: dict):
-    return ask(payload)
+def api_ask(payload: dict, request: Request):
+    return ask(payload, request)
 
 
 # ─────────────────────────
@@ -1068,28 +1360,43 @@ def reload_files():
     }
 
 @app.post("/ask")
-def ask(payload: dict):
+def ask(payload: dict, request: Request):
+    """
+    The main entry point for the Q&A engine. 
+    1. Logs the request.
+    2. Performs retrieval from CV and STAR data.
+    3. (Optional) Uses LLM to rewrite the answer.
+    4. Suggests follow-up questions.
+    """
     question = payload.get("question", "").strip()
+    print(f"\n--- New Request: '{question[:50]}...' ---")
+    
     debug = bool(payload.get("debug", False))
     use_llm = bool(payload.get("use_llm", False))
     preview_context = bool(payload.get("preview_context", False))
     detail_level = payload.get("detail_level", "concise")
 
     if len(question) > MAX_QUESTION_CHARS:
+        print("  ! Rejected: Question too long.")
         return {"answer": f"Please shorten your question to under {MAX_QUESTION_CHARS} characters."}
 
     if not CV_BODY:
+        print("  ! Rejected: CV_BODY not loaded.")
         return {"answer": "No CV loaded yet."}
 
     name = payload.get("name")
     company = payload.get("company")
-    log_question(question, name, company)
+    logging_context = build_logging_context(request, payload)
+    log_question(question, name, company, logging_context)
 
     q_norm = normalize_question_text(question)
     q_canonical = canonical_question_text(question)
 
+    retrieval_start = time.time()
     kept_words, top = find_relevant_sentences(CV_BODY, question)
     bullets = dedupe_lines([clean_line(s) for _, s in top])
+    retrieval_time = time.time() - retrieval_start
+    print(f"  > Retrieval: Found {len(bullets)} bullets in {retrieval_time:.3f}s")
 
     payload_forced_star = bool(payload.get("use_star", False))
     use_star = payload_forced_star or should_use_star(question)
@@ -1114,6 +1421,7 @@ def ask(payload: dict):
         included_star=bool(star_blocks),
         star_example_id=star_example_id,
         reason=reason,
+        metadata=logging_context,
     )
 
     context_parts = []
@@ -1129,7 +1437,11 @@ def ask(payload: dict):
     llm_would_run = use_llm and not preview_context
 
     if not bullets and not star_blocks:
-        response = {"answer": "I couldn't find anything relevant in the CV text I was given."}
+        print("  > Result: No relevant content found.")
+        response = {
+            "answer": "I couldn't find anything relevant in the CV text I was given.",
+            "request_id": logging_context["request_id"],
+        }
         if debug or preview_context:
             response.update({
                 "preview_context": full_context,
@@ -1154,11 +1466,7 @@ def ask(payload: dict):
             answer_source = "llm"
         except Exception as exc:
             llm_error = str(exc)
-            if bullets:
-                final_answer = bullets
-            else:
-                final_answer = ["LLM unavailable and no retrieval answer is available."]
-            answer_source = "fallback"
+            raise HTTPException(status_code=503, detail=f"AI rewrite failed: {llm_error}")
 
     if llm_would_run:
         print("\n===== FULL CONTEXT SENT TO LLM =====")
@@ -1168,10 +1476,12 @@ def ask(payload: dict):
     intent = classify_question_intent(question)
     follow_up_questions = suggest_followup_questions(intent, question)
 
+    print(f"  > Done. Source: {answer_source}")
     response: dict[str, str | list[str] | bool] = {
         "answer": final_answer,
         "answer_source": answer_source,
         "follow_up_questions": follow_up_questions,
+        "request_id": logging_context["request_id"],
     }
     if llm_error:
         response["llm_error"] = llm_error
@@ -1192,6 +1502,18 @@ def ask(payload: dict):
             "llm_requested": use_llm,
             "llm_executed": llm_would_run,
             "answer_source": answer_source,
+            "source_page": logging_context["source_page"],
+            "request_path": logging_context["request_path"],
+            "client_id": logging_context["client_id"],
+            "session_id": logging_context["session_id"],
         })
 
     return response
+
+if __name__ == "__main__":
+    # This block allows the script to stay running and host the web server.
+    # host="0.0.0.0" makes it accessible on your local network.
+    # port=8000 is the default port (e.g., http://localhost:8000).
+    # reload=True automatically restarts the server when you save code changes.
+    print("\nStarting KnowMe server at http://localhost:8000 ...")
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)
