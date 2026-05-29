@@ -33,7 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from typing import TypedDict
 
-from backend.app.config import (
+from .config import (
     ADMIN_COOKIE_NAME,
     BACKEND_DIR,
     CV_FILE,
