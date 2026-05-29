@@ -5,6 +5,7 @@ KnowMe is a lightweight CV Q&A assistant for recruiter-style interactions. It co
 
 - Backend: `backend/app/main.py` (FastAPI)
 - Frontend: `backend/static/index.html`
+- Public frontend behaviour: `backend/static/index.js`
 - Admin UI: `backend/static/admin.html`
 - Static assets and styles: `backend/static/main-style.css`
 - Dependencies: `backend/requirements.txt`
@@ -13,10 +14,11 @@ KnowMe is a lightweight CV Q&A assistant for recruiter-style interactions. It co
 
 - `/` serves the public question-and-answer interface.
 - `/admin` serves the admin UI for ingesting CV and STAR content and testing questions.
-- `/ask` is the main API endpoint that scores CV text and optionally rewrites answers with the OpenAI API.
-- `/ingest_cv` stores the CV text in `backend/data/cv.txt`.
-- `/ingest_star` stores STAR examples in `backend/data/star.txt`.
-- `/reload` refreshes the loaded content in memory.
+- `/api/ask` is the main API endpoint that scores CV text and optionally rewrites answers with the OpenAI API.
+- `/api/ingest_cv` stores the CV text in `backend/data/cv.txt`.
+- `/api/ingest_star` stores STAR examples in `backend/data/star.txt`.
+- `/api/reload` refreshes the loaded content in memory.
+- `/health` is retained only for Render health checks.
 
 ## Deployment on Render
 
@@ -55,7 +57,7 @@ Each row contains:
 - Request id
 - Anonymous browser `client_id`
 - Browser `session_id`
-- Request route (`/ask` or `/api/ask`)
+- Request route (`/api/ask`)
 - Source page/path (`/` vs `/admin`)
 - Optional hashed IP (`client_ip_hash`) when `ANALYTICS_SALT` is configured
 - Optional `name` and `company`
@@ -100,6 +102,5 @@ Then open `http://127.0.0.1:8000/` for the frontend or `http://127.0.0.1:8000/ad
 
 ## Future recommendations
 
-- Add a Render manifest (`render.yaml`) for reproducible service configuration.
 - Add versioned backup of `backend/data/questions.log` if analytics need to scale.
-- Add a dedicated `/status` endpoint returning loaded config and log metadata.
+- Keep operational endpoints under `/api/*` unless a hosting platform requires a root-level path such as `/health`.

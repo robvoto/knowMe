@@ -507,17 +507,18 @@ def normalize_llm_day_state(day_state: object) -> LlmDayState:
     if not isinstance(day_state, dict):
         return {"tokens_used": 0, "identities": {}}
     identities: dict[str, LlmIdentityRecord] = {}
-    raw_identities = day_state.get("identities")
+    raw_identities: object = day_state.get("identities")
     if isinstance(raw_identities, dict):
         for key, value in raw_identities.items():
             if isinstance(key, str) and isinstance(value, dict):
                 record: LlmIdentityRecord = {}
-                last_ts = value.get("last_ts")
+                last_ts: object = value.get("last_ts")
                 if isinstance(last_ts, (int, float)) and not isinstance(last_ts, bool):
                     record["last_ts"] = float(last_ts)
                 identities[key] = record
+    tokens_used: object = day_state.get("tokens_used", 0)
     return {
-        "tokens_used": coerce_int(day_state.get("tokens_used", 0)),
+        "tokens_used": coerce_int(tokens_used),
         "identities": identities,
     }
 
@@ -692,7 +693,6 @@ def health():
     return {"ok": True}
 
 
-@app.get("/ready")
 def ready():
     return {
         "ok": bool(CV_TEXT),
@@ -703,7 +703,6 @@ def ready():
     }
 
 
-@app.get("/status")
 def status():
     return {
         "cv_loaded": bool(CV_TEXT),
@@ -742,12 +741,10 @@ def api_admin_logout(response: Response):
     return {"ok": True}
 
 
-@app.get("/analytics", dependencies=[Depends(require_admin_auth)])
 def analytics():
     return analytics_summary()
 
 
-@app.get("/admin_state", dependencies=[Depends(require_admin_auth)])
 def admin_state():
     log_info("Admin state requested.")
     return {
@@ -867,7 +864,6 @@ def api_ask(payload: dict, request: Request):
 # Core routes
 # ------------------------
 
-@app.post("/ingest_cv")
 def ingest_cv(payload: dict):
     global CV_TEXT
     text = payload.get("text", "")
@@ -879,7 +875,6 @@ def ingest_cv(payload: dict):
     return {"status": "CV stored", "length": len(CV_TEXT)}
 
 
-@app.post("/ingest_star")
 def ingest_star(payload: dict):
     global STAR_TEXT
     text = payload.get("text", "")
@@ -891,7 +886,6 @@ def ingest_star(payload: dict):
     return {"status": "STAR stored", "length": len(STAR_TEXT)}
 
 
-@app.get("/reload")
 def reload_files():
     log_info("Reload requested: refreshing backend data from disk.")
     load_all_data()
@@ -904,7 +898,6 @@ def reload_files():
     }
 
 
-@app.post("/ask")
 def ask(payload: dict, request: Request):
     question = payload.get("question", "").strip()
     if not question:

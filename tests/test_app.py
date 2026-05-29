@@ -154,6 +154,16 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(payload["answer_source"], "none")
         self.assertEqual(payload["answer"], "Enable 'Use AI rewrite' to get an answer.")
 
+    def test_legacy_public_api_routes_are_removed(self):
+        self.assertEqual(self.client.get("/ready").status_code, 404)
+        self.assertEqual(self.client.get("/status").status_code, 404)
+        self.assertEqual(self.client.get("/analytics").status_code, 404)
+        self.assertEqual(self.client.get("/reload").status_code, 404)
+        self.assertEqual(self.client.post("/ask", json={"question": "test"}).status_code, 404)
+        self.assertEqual(self.client.post("/ingest_cv", json={"text": "test"}).status_code, 404)
+        self.assertEqual(self.client.post("/ingest_star", json={"text": "test"}).status_code, 404)
+        self.assertEqual(self.client.get("/health").status_code, 200)
+
     def test_empty_question_is_rejected_before_retrieval_or_llm(self):
         with patch.object(appmod, "log_question") as fake_log:
             response = self.client.post(
@@ -196,7 +206,7 @@ class KnowMeAppTests(TestCase):
             {
                 "type": "http",
                 "method": "GET",
-                "path": "/ask",
+                "path": "/api/ask",
                 "headers": [
                     (b"x-forwarded-for", b"1.2.3.4"),
                     (b"x-real-ip", b"5.6.7.8"),

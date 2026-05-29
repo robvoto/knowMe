@@ -35,8 +35,8 @@ Open the app in your browser:
 
 Health and readiness checks:
 
-- `http://127.0.0.1:8000/health`
-- `http://127.0.0.1:8000/ready`
+- `http://127.0.0.1:8000/health` - Render health check
+- `http://127.0.0.1:8000/api/ready` - app content readiness
 
 Agent-friendly API endpoints:
 
@@ -51,7 +51,7 @@ Agent-friendly API endpoints:
 - `GET  http://127.0.0.1:8000/api/health`
 - `GET  http://127.0.0.1:8000/api/docs`
 
-These endpoints mirror the existing admin and ask behavior with a cleaner `/api` contract for automation.
+Use `/api/*` for application and automation calls. Non-API legacy routes have been removed except `/health`, which is kept for Render health checks.
 
 Use `/api/docs` to discover the available agent endpoints and their purpose.
 
