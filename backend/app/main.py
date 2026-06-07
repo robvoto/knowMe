@@ -150,10 +150,11 @@ def get_file_metadata(path: Path) -> FileMetadata:
 
 
 def load_all_data():
-    global CV_TEXT, STAR_TEXT, PROMPT_OVERRIDES, ANSWER_CACHE
+    global CV_TEXT, STAR_TEXT, PROMPT_DEFAULTS, PROMPT_OVERRIDES, ANSWER_CACHE
     log_info("Loading in-memory backend data from disk.")
     CV_TEXT = load_text_file(CV_FILE)
     STAR_TEXT = load_text_file(STAR_FILE)
+    PROMPT_DEFAULTS = load_prompt_defaults()
     PROMPT_OVERRIDES = load_prompt_overrides()
     ANSWER_CACHE = load_answer_cache()
     log_info(f"Loaded CV={len(CV_TEXT)} chars, STAR={len(STAR_TEXT)} chars.")
@@ -166,8 +167,12 @@ def startup_checkup():
     print(f"CWD: {os.getcwd()}")
     print(f"CV file:   {CV_FILE.resolve()}  exists={CV_FILE.exists()}")
     print(f"STAR file: {STAR_FILE.resolve()} exists={STAR_FILE.exists()}")
+    print(f"Prompt defaults file: {PROMPT_DEFAULTS_PATH.resolve()} exists={PROMPT_DEFAULTS_PATH.exists()}")
+    print(f"Prompt overrides file: {PROMPT_CONFIG_PATH.resolve()} exists={PROMPT_CONFIG_PATH.exists()}")
     print(f"Loaded CV chars:   {len(CV_TEXT)}")
     print(f"Loaded STAR chars: {len(STAR_TEXT)}")
+    print(f"Loaded prompt default chars: {len(PROMPT_DEFAULTS.get('base', ''))}")
+    print(f"Loaded prompt override chars: {len(PROMPT_OVERRIDES.get('base', ''))}")
     print(f"Loaded answer cache entries: {len(ANSWER_CACHE)}")
     print("=" * 60 + "\n")
 
@@ -334,7 +339,7 @@ def analytics_summary() -> dict:
         "hashed_ip_enabled": bool(ANALYTICS_SALT),
         "source_page_counts": [{"source_page": s, "count": c} for s, c in sorted(source_counts.items(), key=lambda x: x[1], reverse=True)],
         "recent_questions": recent_questions,
-        # kept for admin UI compatibility — no longer populated
+        # kept for admin UI compatibility - no longer populated
         "top_canonical_questions": [],
         "top_normalized_questions": [],
         "intent_counts": [],
@@ -345,67 +350,67 @@ def analytics_summary() -> dict:
 # LLM
 # ------------------------
 
-BASE_SYSTEM_PROMPT = (
-    "You answer recruiter questions about candidate Rob Voto based strictly on the supplied CV and STAR examples. "
-    "Every claim must be anchored to a specific organisation and time period from the CV. "
-    "Do not invent or infer experience not in the supplied text. "
-    "\n\n"
-    "RULE — EXAMPLE OR STORY QUESTIONS: "
-    "When the question asks for an example, a story, a time when, a situation, a challenge, a result, or uses phrases like "
-    "'give an example', 'tell me about a time', 'describe a situation', 'walk me through', 'concrete example', or 'STAR', "
-    "you MUST look in the STAR EXAMPLES section first. "
-    "Find the most relevant EXAMPLE block and present it using these exact headings: "
-    "Situation, Task, Action, Result. "
-    "Each section should be 2-4 sentences drawn directly from the STAR block. "
-    "Do not summarise into bullets. Do not pad with generic skill claims from the CV body. "
-    "If multiple STAR blocks are relevant, pick the best one unless the question asks for more than one. "
-    "\n\n"
-    "RULE — INDUSTRY OR SECTOR QUESTIONS: "
-    "List ALL relevant organisations with their sector or domain. Do not stop early. "
-    "\n\n"
-    "RULE — GENERAL QUESTIONS: "
-    "Lead with the most recent and directly relevant experience. "
-    "Keep answers concise and recruiter-focused unless asked for more detail. "
-    "\n\n"
-    "If the answer is not in the supplied text, say exactly: 'I can't find that in the CV text I was given.'"
-)
-
+PROMPT_KEYS = ("base", "industry", "fit", "star", "bpmn", "tools", "ai", "detail")
+PROMPT_DEFAULTS_PATH = DATA_DIR / "prompt_defaults.json"
 PROMPT_CONFIG_PATH = DATA_DIR / "prompt_config.json"
-PROMPT_OVERRIDE_KEYS = ("base", "industry", "fit", "star", "bpmn", "tools", "ai", "detail")
-PROMPT_OVERRIDES: dict[str, str] = {key: "" for key in PROMPT_OVERRIDE_KEYS}
+PROMPT_DEFAULTS: dict[str, str] = {key: "" for key in PROMPT_KEYS}
+PROMPT_OVERRIDES: dict[str, str] = {key: "" for key in PROMPT_KEYS}
 
 LLM_MODEL = "gpt-4.1-mini"
+
 LLM_MAX_OUTPUT_TOKENS = 500
 LLM_CALL_COOLDOWN_SECONDS = 10
 LLM_DAILY_TOKEN_CAP = int(os.getenv("LLM_DAILY_TOKEN_CAP", "50000"))
 LLM_USAGE_PATH = DATA_DIR / "llm_usage.json"
 
 
+def normalize_prompt_values(raw: object, source: str) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"Invalid prompt data format in {source}.")
+    values: dict[str, str] = {}
+    for key in PROMPT_KEYS:
+        if key not in raw:
+            raise RuntimeError(f"Missing prompt key '{key}' in {source}.")
+        value = raw.get(key)
+        if not isinstance(value, str):
+            raise RuntimeError(f"Prompt key '{key}' in {source} must be a string.")
+        values[key] = value.strip()
+    return values
+
+
+def load_prompt_defaults() -> dict[str, str]:
+    if not PROMPT_DEFAULTS_PATH.exists():
+        raise RuntimeError(f"Required prompt defaults file missing: {PROMPT_DEFAULTS_PATH}")
+    try:
+        raw = json.loads(PROMPT_DEFAULTS_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"Prompt defaults unreadable: {exc}") from exc
+    values = normalize_prompt_values(raw, str(PROMPT_DEFAULTS_PATH))
+    if not values["base"]:
+        raise RuntimeError(f"Prompt defaults file must define a non-empty base prompt: {PROMPT_DEFAULTS_PATH}")
+    return values
+
+
 def load_prompt_overrides() -> dict[str, str]:
     if not PROMPT_CONFIG_PATH.exists():
-        loud_warning(f"Prompt config missing; using empty overrides: {PROMPT_CONFIG_PATH}")
-        return {key: "" for key in PROMPT_OVERRIDE_KEYS}
+        log_info(f"Prompt overrides not found; starting empty: {PROMPT_CONFIG_PATH}")
+        return {key: "" for key in PROMPT_KEYS}
     try:
         raw = json.loads(PROMPT_CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
-        loud_warning(f"Prompt config unreadable; using empty overrides: {exc}")
-        return {key: "" for key in PROMPT_OVERRIDE_KEYS}
-    if not isinstance(raw, dict):
-        return {key: "" for key in PROMPT_OVERRIDE_KEYS}
-    return {
-        key: raw.get(key, "").strip() if isinstance(raw.get(key, ""), str) else ""
-        for key in PROMPT_OVERRIDE_KEYS
-    }
+        raise RuntimeError(f"Prompt overrides unreadable: {exc}") from exc
+    return normalize_prompt_values(raw, str(PROMPT_CONFIG_PATH))
 
 
 def save_prompt_overrides(overrides: dict[str, str]) -> None:
+    normalized = normalize_prompt_values(overrides, "prompt overrides payload")
     PROMPT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PROMPT_CONFIG_PATH.write_text(json.dumps(overrides, ensure_ascii=False, indent=2), encoding="utf-8")
+    PROMPT_CONFIG_PATH.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
     log_info(f"Saved prompt overrides: {PROMPT_CONFIG_PATH}")
 
 
 def active_system_prompt() -> str:
-    return PROMPT_OVERRIDES.get("base") or BASE_SYSTEM_PROMPT
+    return PROMPT_OVERRIDES.get("base") or PROMPT_DEFAULTS["base"]
 
 
 def hash_cache_payload(payload: object) -> str:
@@ -592,7 +597,7 @@ def enforce_llm_rate_limit(request: Request, logging_context: dict[str, str]) ->
     if used >= LLM_DAILY_TOKEN_CAP:
         raise HTTPException(
             status_code=429,
-            detail="AI is paused for today — daily limit reached. Try again tomorrow.",
+            detail="AI is paused for today - daily limit reached. Try again tomorrow.",
             headers={"Retry-After": "86400"},
         )
 
@@ -603,7 +608,7 @@ def enforce_llm_rate_limit(request: Request, logging_context: dict[str, str]) ->
     save_llm_usage(state)
 
 
-def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int]:
+def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int, float, int, int]:
     context_parts = [CV_TEXT]
     if STAR_TEXT:
         context_parts.append("STAR EXAMPLES:\n" + STAR_TEXT)
@@ -618,9 +623,7 @@ def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int]:
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OpenAI API key is not configured.")
 
-    start = time.time()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] LLM: calling {LLM_MODEL}...")
-
+    start = time.perf_counter()
     resp = client.responses.create(
         model=LLM_MODEL,
         instructions=(
@@ -632,23 +635,18 @@ def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int]:
         temperature=0.2,
         max_output_tokens=LLM_MAX_OUTPUT_TOKENS,
     )
+    elapsed = time.perf_counter() - start
 
-    elapsed = time.time() - start
     usage = getattr(resp, "usage", None)
-    tokens_used = 0
+    in_t, out_t = 0, 0
     if usage:
         in_t = coerce_int(getattr(usage, "input_tokens", 0))
         out_t = coerce_int(getattr(usage, "output_tokens", 0))
-        tokens_used = in_t + out_t
-        cost = (in_t * 0.00000015) + (out_t * 0.0000006)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] LLM: {elapsed:.2f}s | {in_t}in {out_t}out | ${cost:.6f}")
-    else:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] LLM: {elapsed:.2f}s (usage unavailable)")
 
     final_text = (resp.output_text or "").strip()
     if not final_text:
         raise RuntimeError("OpenAI returned an empty response.")
-    return final_text, tokens_used
+    return final_text, in_t + out_t, elapsed, in_t, out_t
 
 # ------------------------
 # Admin auth
@@ -756,6 +754,7 @@ def admin_state():
         "star_text": STAR_TEXT,
         "llm_budget": get_llm_budget_status(),
         "prompt_overrides": PROMPT_OVERRIDES,
+        "prompt_defaults_file": get_file_metadata(PROMPT_DEFAULTS_PATH),
         "prompt_config_file": get_file_metadata(PROMPT_CONFIG_PATH),
         "cv_file": get_file_metadata(CV_FILE),
         "star_file": get_file_metadata(STAR_FILE),
@@ -771,18 +770,9 @@ def api_admin_state():
 def api_admin_prompts_get():
     log_info("Prompt bundle requested.")
     return {
-        "defaults": {
-            "base": BASE_SYSTEM_PROMPT,
-            "industry": "",
-            "fit": "",
-            "star": "",
-            "bpmn": "",
-            "tools": "",
-            "ai": "",
-            "detail": "",
-        },
+        "defaults": PROMPT_DEFAULTS,
         "overrides": PROMPT_OVERRIDES,
-        "active": {key: PROMPT_OVERRIDES.get(key, "") for key in PROMPT_OVERRIDE_KEYS},
+        "active": {key: PROMPT_OVERRIDES.get(key, "") or PROMPT_DEFAULTS[key] for key in PROMPT_KEYS},
     }
 
 
@@ -790,14 +780,10 @@ def api_admin_prompts_get():
 def api_admin_prompts_post(payload: dict):
     global PROMPT_OVERRIDES
     incoming = payload.get("overrides", {})
-    if not isinstance(incoming, dict):
-        raise HTTPException(status_code=400, detail="Invalid prompt overrides payload.")
-    next_overrides = {key: "" for key in PROMPT_OVERRIDE_KEYS}
-    for key in PROMPT_OVERRIDE_KEYS:
-        value = incoming.get(key, "")
-        if isinstance(value, str):
-            next_overrides[key] = value.strip()
-    PROMPT_OVERRIDES = next_overrides
+    try:
+        PROMPT_OVERRIDES = normalize_prompt_values(incoming, "prompt overrides payload")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     save_prompt_overrides(PROMPT_OVERRIDES)
     return {"ok": True, "overrides": PROMPT_OVERRIDES}
 
@@ -832,7 +818,7 @@ def api_docs():
     return {
         "service": "knowMe agent API",
         "version": "2.0",
-        "description": "CV Q&A backed by full-text LLM — no heuristic retrieval.",
+        "description": "CV Q&A backed by full-text LLM - no heuristic retrieval.",
         "endpoints": [
             {"method": "GET", "path": "/api/ready"},
             {"method": "GET", "path": "/api/status"},
@@ -898,12 +884,38 @@ def reload_files():
     }
 
 
+def _print_ask_summary(
+    question: str,
+    source: str,
+    cache_hit: bool,
+    total_s: float,
+    llm_s: float = 0.0,
+    in_t: int = 0,
+    out_t: int = 0,
+) -> None:
+    sep = "─" * 56
+    ts = datetime.now().strftime("%H:%M:%S")
+    q_display = question[:60] + ("…" if len(question) > 60 else "")
+    print(f"\n{sep}")
+    print(f"  ASK  {ts}  \"{q_display}\"")
+    print(f"  source  : {source}")
+    if cache_hit:
+        print(f"  cache   : HIT")
+        print(f"  total   : {total_s * 1000:.0f}ms")
+    else:
+        tokens_total = in_t + out_t
+        cost = (in_t * 0.00000015) + (out_t * 0.0000006)
+        print(f"  cache   : MISS")
+        print(f"  llm     : {llm_s:.2f}s  |  {in_t} in + {out_t} out = {tokens_total} tokens  |  ${cost:.6f}")
+        print(f"  total   : {total_s:.2f}s")
+    print(sep)
+
+
 def ask(payload: dict, request: Request):
+    t_start = time.perf_counter()
     question = payload.get("question", "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Please type a question.")
-
-    print(f"\n--- Ask: '{question[:80]}' ---")
 
     if len(question) > MAX_QUESTION_CHARS:
         loud_warning(f"Rejected: question exceeded {MAX_QUESTION_CHARS} chars.")
@@ -925,13 +937,13 @@ def ask(payload: dict, request: Request):
     company = payload.get("company")
     logging_context = build_logging_context(request, payload)
     log_question(question, name, company, logging_context)
+    source = logging_context.get("source_page", "-")
 
     cached_entry = get_cached_answer(question, detail_level)
     if cached_entry:
         cached_answer = cached_entry.get("answer", "")
         if isinstance(cached_answer, str) and cached_answer.strip():
-            log_info(f"Answer cache hit for question: {question[:80]}")
-            print("  > Done. 0 tokens (cache hit).")
+            _print_ask_summary(question, source, cache_hit=True, total_s=time.perf_counter() - t_start)
             return {
                 "answer": cached_answer,
                 "answer_source": "llm",
@@ -940,7 +952,7 @@ def ask(payload: dict, request: Request):
 
     try:
         enforce_llm_rate_limit(request, logging_context)
-        answer, tokens_used = llm_answer(question, detail_level)
+        answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
         record_llm_usage(logging_context, tokens_used)
         store_cached_answer(question, detail_level, answer, tokens_used)
     except HTTPException:
@@ -949,7 +961,11 @@ def ask(payload: dict, request: Request):
         loud_warning(f"LLM call failed: {exc}")
         raise HTTPException(status_code=503, detail=f"AI answer failed: {exc}")
 
-    print(f"  > Done. {tokens_used} tokens.")
+    _print_ask_summary(
+        question, source, cache_hit=False,
+        total_s=time.perf_counter() - t_start,
+        llm_s=llm_elapsed, in_t=in_t, out_t=out_t,
+    )
     return {
         "answer": answer,
         "answer_source": "llm",

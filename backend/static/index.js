@@ -164,8 +164,14 @@ function createClientId(prefix = 'km') {
     document.querySelectorAll('button.sample').forEach(btn => {
       btn.addEventListener('click', () => {
         const q = btn.dataset.q;
-        document.getElementById('q').value = q;
+        const input = document.getElementById('q');
+        input.value = q;
         renderFollowUps(q);
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        input.focus();
+        input.classList.remove('q-loaded');
+        void input.offsetWidth;
+        input.classList.add('q-loaded');
       });
     });
 

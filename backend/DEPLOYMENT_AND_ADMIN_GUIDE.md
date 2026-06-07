@@ -88,11 +88,25 @@ This reduces noisy duplicates and improves analytics quality.
 
 ## Local development
 
-From `backend`:
+From the repo root:
 
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r backend/requirements.txt
+python -m backend.app.main
+```
+
+If you want to run Uvicorn directly from the repo root instead of using the module entrypoint:
+
+```powershell
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+If you want to use a custom port in PowerShell, set it explicitly first:
+
+```powershell
+$env:PORT = 8000
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port $env:PORT --reload
 ```
 
 Then open `http://127.0.0.1:8000/` for the frontend or `http://127.0.0.1:8000/admin` for the admin UI.

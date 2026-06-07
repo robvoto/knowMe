@@ -1,4 +1,5 @@
-﻿import os
+import json
+import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -27,15 +28,22 @@ class KnowMeAppTests(TestCase):
             "QUESTION_LOG_FILE": appmod.QUESTION_LOG_FILE,
             "QUESTION_EVENT_LOG_FILE": appmod.QUESTION_EVENT_LOG_FILE,
             "LLM_USAGE_PATH": appmod.LLM_USAGE_PATH,
+            "PROMPT_DEFAULTS_PATH": appmod.PROMPT_DEFAULTS_PATH,
             "PROMPT_CONFIG_PATH": appmod.PROMPT_CONFIG_PATH,
             "ANSWER_CACHE_FILE": appmod.ANSWER_CACHE_FILE,
         }
         appmod.QUESTION_LOG_FILE = self.temp_path / "questions.log"
         appmod.QUESTION_EVENT_LOG_FILE = self.temp_path / "question_events.jsonl"
         appmod.LLM_USAGE_PATH = self.temp_path / "llm_usage.json"
+        appmod.PROMPT_DEFAULTS_PATH = self.temp_path / "prompt_defaults.json"
         appmod.PROMPT_CONFIG_PATH = self.temp_path / "prompt_config.json"
         appmod.ANSWER_CACHE_FILE = self.temp_path / "answer_cache.json"
-        appmod.PROMPT_OVERRIDES = {key: "" for key in appmod.PROMPT_OVERRIDE_KEYS}
+        self.temp_path.joinpath("prompt_defaults.json").write_text(
+            json.dumps({key: ("Test default base prompt" if key == "base" else "") for key in appmod.PROMPT_KEYS}),
+            encoding="utf-8",
+        )
+        appmod.PROMPT_DEFAULTS = {key: "" for key in appmod.PROMPT_KEYS}
+        appmod.PROMPT_OVERRIDES = {key: "" for key in appmod.PROMPT_KEYS}
         appmod.ANSWER_CACHE = {}
 
         self.client = TestClient(appmod.app)
@@ -45,6 +53,7 @@ class KnowMeAppTests(TestCase):
         self.client.__exit__(None, None, None)
         for name, value in self.original_paths.items():
             setattr(appmod, name, value)
+        appmod.PROMPT_DEFAULTS = appmod.load_prompt_defaults()
         appmod.PROMPT_OVERRIDES = appmod.load_prompt_overrides()
         appmod.ANSWER_CACHE = {}
         self.temp_dir.cleanup()
@@ -102,6 +111,7 @@ class KnowMeAppTests(TestCase):
             "/api/ingest_star",
             "Backend logs are written",
             "Reads the current CV, STAR, and prompt files from disk",
+            "Prompt defaults live in",
             "Saving here writes to <code>backend/data/cv.txt</code>",
         )
 
@@ -129,14 +139,18 @@ class KnowMeAppTests(TestCase):
         self.assertTrue(payload["star_loaded"])
         self.assertIn("llm_budget", payload)
         self.assertIn("prompt_overrides", payload)
+        self.assertIn("prompt_defaults_file", payload)
 
     def test_admin_prompt_round_trip(self):
         self.login()
         get_resp = self.client.get("/api/admin_prompts")
         self.assertEqual(get_resp.status_code, 200)
+        self.assertEqual(get_resp.json()["defaults"]["base"], "Test default base prompt")
+        overrides = {key: "" for key in appmod.PROMPT_KEYS}
+        overrides["base"] = "Do not mention years unless the user specifically asks for them."
         post_resp = self.client.post(
             "/api/admin_prompts",
-            json={"overrides": {"base": "Do not mention years unless the user specifically asks for them."}},
+            json={"overrides": overrides},
         )
         self.assertEqual(post_resp.status_code, 200)
         self.assertTrue(appmod.PROMPT_CONFIG_PATH.exists())
@@ -299,3 +313,4 @@ class KnowMeAppTests(TestCase):
                 )
         self.assertEqual(exc.exception.status_code, 429)
         self.assertIn("daily limit reached", exc.exception.detail.lower())
+
