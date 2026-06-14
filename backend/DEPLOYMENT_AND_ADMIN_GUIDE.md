@@ -404,7 +404,39 @@ SSL certificate verify ok
 127.0.0.1:8765
 ```
 
+## Install EC2 helper commands
+
+KnowMe includes EC2 helper scripts under:
+
+```text
+scripts/ec2/
+```
+
+Install or refresh helper commands on EC2:
+
+```bash
+use-ubuntu
+cd /home/ubuntu/knowme
+sudo bash scripts/ec2/install-helpers.sh
+```
+
+Installed commands:
+
+```text
+/usr/local/bin/deploy-knowme
+/usr/local/bin/knowme-status
+```
+
 ## Normal AWS update
+
+Preferred update command:
+
+```bash
+use-ubuntu
+deploy-knowme
+```
+
+Manual update equivalent:
 
 ```bash
 use-ubuntu
