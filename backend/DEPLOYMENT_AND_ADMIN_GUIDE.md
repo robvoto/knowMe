@@ -112,7 +112,9 @@ llm_usage.json
 
 ## Fresh AWS install
 
-Run on the EC2 host as the app owner:
+Run on the EC2 host as the app owner.
+
+Session Manager may log in as `ssm-user`. Switch to `ubuntu` first:
 
 ```bash
 use-ubuntu
@@ -123,6 +125,8 @@ If the helper is unavailable:
 ```bash
 sudo -iu ubuntu
 ```
+
+`use-ubuntu` opens a new shell as `ubuntu`. If pasting multiple commands, run `use-ubuntu` by itself first, then run the remaining commands after the prompt shows the `ubuntu` user.
 
 ### 1. Check base platform
 
@@ -412,10 +416,17 @@ KnowMe includes EC2 helper scripts under:
 scripts/ec2/
 ```
 
-Install or refresh helper commands on EC2:
+Install or refresh helper commands on EC2.
+
+First switch to the app owner if needed:
 
 ```bash
 use-ubuntu
+```
+
+Then run:
+
+```bash
 cd /home/ubuntu/knowme
 sudo bash scripts/ec2/install-helpers.sh
 ```
@@ -433,6 +444,11 @@ Preferred update command:
 
 ```bash
 use-ubuntu
+```
+
+Then:
+
+```bash
 deploy-knowme
 ```
 
@@ -440,6 +456,11 @@ Manual update equivalent:
 
 ```bash
 use-ubuntu
+```
+
+Then:
+
+```bash
 cd /home/ubuntu/knowme
 GIT_SSH_COMMAND='ssh -i ~/.ssh/knowme_deploy_key -o IdentitiesOnly=yes' git pull --ff-only
 source .venv/bin/activate
