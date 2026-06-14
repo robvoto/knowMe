@@ -7,6 +7,8 @@ KnowMe is a lightweight FastAPI backend with a static frontend for intelligent C
 - Admin UI: `/admin`
 - Backend entrypoint: `backend/app/main.py`
 - Dependencies: `backend/requirements.txt`
+- Production deployment: AWS-hosted service
+- Legacy deployment manifest: `render.yaml`
 
 ## Local development
 
@@ -35,7 +37,7 @@ Open the app in your browser:
 
 Health and readiness checks:
 
-- `http://127.0.0.1:8000/health` - Render health check
+- `http://127.0.0.1:8000/health` - hosting health check
 - `http://127.0.0.1:8000/api/ready` - app content readiness
 
 Agent-friendly API endpoints:
@@ -51,12 +53,12 @@ Agent-friendly API endpoints:
 - `GET  http://127.0.0.1:8000/api/health`
 - `GET  http://127.0.0.1:8000/api/docs`
 
-Use `/api/*` for application and automation calls. Non-API legacy routes have been removed except `/health`, which is kept for Render health checks.
+Use `/api/*` for application and automation calls. Non-API legacy routes have been removed except `/health`, which is kept for hosting health checks.
 
 Use `/api/docs` to discover the available agent endpoints and their purpose.
 
 ## Documentation
 
-See `backend/DEPLOYMENT_AND_ADMIN_GUIDE.md` for deployment, Render configuration, admin operations, logging, and normalization details.
+See `backend/DEPLOYMENT_AND_ADMIN_GUIDE.md` for deployment, admin operations, logging, and normalization details.
 
-The root-level `render.yaml` file is a Render manifest that tells Render how to build and run the app automatically from this repo. It stores the service configuration in source control, including the branch, root directory, Python build command, server start command, and health check path.
+The app is deployed on AWS at `knowme.robvoto.com`. Legacy Render configuration is still kept in source control for reference.

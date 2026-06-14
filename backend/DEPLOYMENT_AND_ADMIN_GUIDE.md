@@ -1,123 +1,532 @@
 # KnowMe Deployment and Admin Guide
 
-## Overview
-KnowMe is a lightweight CV Q&A assistant for recruiter-style interactions. It consists of:
+## Purpose
 
-- Backend: `backend/app/main.py` (FastAPI)
-- Frontend: `backend/static/index.html`
-- Public frontend behaviour: `backend/static/index.js`
-- Admin UI: `backend/static/admin.html`
-- Static assets and styles: `backend/static/main-style.css`
-- Dependencies: `backend/requirements.txt`
+KnowMe is a FastAPI CV Q&A application for recruiter-style questions about a candidate.
 
-## Architecture
+This document describes the production deployment on AWS EC2.
 
-- `/` serves the public question-and-answer interface.
-- `/admin` serves the admin UI for ingesting CV and STAR content and testing questions.
-- `/api/ask` is the main API endpoint that scores CV text and optionally rewrites answers with the OpenAI API.
-- `/api/ingest_cv` stores the CV text in `backend/data/cv.txt`.
-- `/api/ingest_star` stores STAR examples in `backend/data/star.txt`.
-- `/api/reload` refreshes the loaded content in memory.
-- `/health` is retained only for Render health checks.
+## Production architecture
 
-## Deployment on Render
+KnowMe runs as a separate application on the same EC2 host as Job Hunter.
 
-Recommended Render service configuration:
+Shared infrastructure:
 
-- Root directory: `backend`
-- Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Environment: Python 3.x
-- Add secret env vars: `ADMIN_PASSWORD`, `ADMIN_COOKIE_SECRET`
-- Add secret env var if you use LLM answers: `OPENAI_API_KEY`
-- Optional analytics salt: `ANALYTICS_SALT`
+```text
+EC2 host
+Public IP
+Nginx
+systemd
+Let's Encrypt / Certbot
+```
 
-### Notes
-- `backend/requirements.txt` contains the runtime dependencies.
-- `backend/.env` is used locally for environment variables, but secrets should be configured in Render.
-- Render should be connected to the GitHub `main` branch for automatic deploys.
-- `render.yaml` at the repo root is a Render manifest that stores the service settings in source control.
-- If startup fails with `ADMIN_PASSWORD is required.` or `ADMIN_COOKIE_SECRET is required.`, set those secrets in Render before redeploying.
+KnowMe-specific runtime:
 
-## Admin workflow
+```text
+Public URL:          https://knowme.robvoto.com
+Application path:    /home/ubuntu/knowme
+Backend path:        /home/ubuntu/knowme/backend
+Python venv:         /home/ubuntu/knowme/.venv
+Environment file:    /etc/knowme/knowme.env
+Persistent data:     /var/lib/knowme/data
+Repo data symlink:   /home/ubuntu/knowme/backend/data -> /var/lib/knowme/data
+systemd service:     knowme.service
+Internal bind:       127.0.0.1:8001
+Nginx site file:     /etc/nginx/sites-available/knowme
+```
 
-1. Open `/admin`.
-2. Paste the candidate CV into the CV text box and click `Ingest CV`.
-3. Paste STAR examples into the STAR text box and click `Ingest STAR`.
-4. Use the question box to test recruiter-style questions.
-5. Use the `Reload status` button to confirm current CV and STAR content is loaded.
+Job Hunter remains separate:
 
-## Logging and analytics
+```text
+Public URL:          https://jobhunter.robvoto.com/start
+systemd service:     job-hunter.service
+Internal bind:       127.0.0.1:8765
+```
 
-KnowMe logs question interactions to both:
+Do not reuse Job Hunter routes, auth, UI, environment files, ports, data folders, or service names for KnowMe.
 
-- `backend/data/questions.log` for quick human-readable inspection
-- `backend/data/question_events.jsonl` for structured analytics
+## Application structure
 
-Each row contains:
+```text
+backend/app/main.py          FastAPI application entry point
+backend/app/config.py        Filesystem paths and runtime constants
+backend/static/index.html    Public recruiter-facing page
+backend/static/admin.html    Admin page
+backend/data/                Local/default data files
+backend/requirements.txt     Python dependencies
+```
 
-- Timestamp
-- Request id
-- Anonymous browser `client_id`
-- Browser `session_id`
-- Request route (`/api/ask`)
-- Source page/path (`/` vs `/admin`)
-- Optional hashed IP (`client_ip_hash`) when `ANALYTICS_SALT` is configured
-- Optional `name` and `company`
-- Original question (`q=`)
-- Normalized question (`q_norm=`)
-- Canonical grouped question (`q_canonical=`)
+Runtime entry point from `/home/ubuntu/knowme/backend`:
 
-This supports cleaner analytics by grouping similar questions together and separating repeated tests from likely distinct visitors.
+```bash
+/home/ubuntu/knowme/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
 
-The app also writes intent events to `backend/data/intent_log.jsonl` for internal analysis.
+## Required environment variables
 
-To enable privacy-preserving hashed IP counts, set `ANALYTICS_SALT` in the backend environment. Raw IP addresses are not stored.
+Production secrets are stored only in:
 
-## Question normalization
+```text
+/etc/knowme/knowme.env
+```
 
-KnowMe now normalizes questions before logging:
+Required:
 
-- lowercases text
-- removes punctuation
-- collapses repeated whitespace
-- replaces candidate references (e.g. `Rob`, `Robert`) with a stable placeholder
-- normalizes role variants such as `technical BA`, `BA`, and `technical business analyst` to `business analyst`
+```env
+ADMIN_PASSWORD=<strong-admin-password>
+ADMIN_COOKIE_SECRET=<long-random-secret>
+```
 
-This reduces noisy duplicates and improves analytics quality.
+Optional but used in production:
+
+```env
+OPENAI_API_KEY=<server-side-openai-key>
+ANALYTICS_SALT=<random-salt-for-hashed-analytics>
+LLM_DAILY_TOKEN_CAP=50000
+```
+
+Do not commit secrets, `.env` files, API keys, or admin passwords to GitHub.
+
+## Data persistence
+
+KnowMe reads and writes through `backend/data`.
+
+On AWS, `backend/data` is a symlink:
+
+```text
+/home/ubuntu/knowme/backend/data -> /var/lib/knowme/data
+```
+
+Persistent files include:
+
+```text
+cv.txt
+star.txt
+prompt_defaults.json
+prompt_config.json
+questions.log
+question_events.jsonl
+answer_cache.json
+llm_usage.json
+```
+
+## Fresh AWS install
+
+Run on the EC2 host as the app owner:
+
+```bash
+use-ubuntu
+```
+
+If the helper is unavailable:
+
+```bash
+sudo -iu ubuntu
+```
+
+### 1. Check base platform
+
+```bash
+hostname
+lsb_release -a
+python3 --version
+nginx -v
+systemctl status nginx --no-pager
+sudo ss -tlnp | grep -E ':80|:443|:8765|:8001'
+```
+
+Expected baseline:
+
+```text
+Ubuntu 24.04
+Python 3.12.x
+Nginx active
+No public FastAPI port exposed
+```
+
+### 2. Configure GitHub deploy key
+
+Create the EC2 deploy key:
+
+```bash
+ssh-keygen -t ed25519 -C "knowme-ec2-readonly" -f ~/.ssh/knowme_deploy_key
+cat ~/.ssh/knowme_deploy_key.pub
+```
+
+Add the public key to:
+
+```text
+GitHub -> robvoto/knowMe -> Settings -> Deploy keys
+```
+
+Keep write access disabled.
+
+Verify access:
+
+```bash
+ssh -vT -i ~/.ssh/knowme_deploy_key -o IdentitiesOnly=yes git@github.com 2>&1 | grep -E "Offering public key|Server accepts key|Permission denied|Authenticated"
+```
+
+Expected:
+
+```text
+Server accepts key
+Authenticated to github.com
+```
+
+### 3. Clone KnowMe
+
+```bash
+cd /home/ubuntu
+GIT_SSH_COMMAND='ssh -i ~/.ssh/knowme_deploy_key -o IdentitiesOnly=yes' \
+  git clone git@github.com:robvoto/knowMe.git knowme
+```
+
+Verify:
+
+```bash
+cd /home/ubuntu/knowme
+ls -la
+ls -la backend
+cat backend/requirements.txt
+```
+
+### 4. Create Python environment
+
+```bash
+cd /home/ubuntu/knowme
+python3 -m venv .venv
+source .venv/bin/activate
+python --version
+pip install --upgrade pip setuptools wheel
+pip install -r backend/requirements.txt
+```
+
+Verify:
+
+```bash
+/home/ubuntu/knowme/.venv/bin/python -c "import fastapi, uvicorn, openai, dotenv; print('KnowMe deps OK')"
+```
+
+Expected:
+
+```text
+KnowMe deps OK
+```
+
+### 5. Create persistent data path
+
+```bash
+sudo mkdir -p /var/lib/knowme/data
+sudo chown -R ubuntu:ubuntu /var/lib/knowme
+
+if [ -z "$(ls -A /var/lib/knowme/data 2>/dev/null)" ]; then
+  cp -a /home/ubuntu/knowme/backend/data/. /var/lib/knowme/data/
+fi
+
+cd /home/ubuntu/knowme/backend
+
+if [ -d data ] && [ ! -L data ]; then
+  mv data data.repo-backup.$(date +%Y%m%d%H%M%S)
+fi
+
+ln -sfn /var/lib/knowme/data /home/ubuntu/knowme/backend/data
+```
+
+Verify:
+
+```bash
+ls -la /home/ubuntu/knowme/backend/data
+ls -la /var/lib/knowme/data
+```
+
+Expected:
+
+```text
+/home/ubuntu/knowme/backend/data -> /var/lib/knowme/data
+```
+
+### 6. Create production environment file
+
+```bash
+sudo mkdir -p /etc/knowme
+sudo nano /etc/knowme/knowme.env
+```
+
+Required shape:
+
+```env
+OPENAI_API_KEY=<server-side-openai-key>
+ANALYTICS_SALT=<random-salt-for-hashed-analytics>
+ADMIN_PASSWORD=<strong-admin-password>
+ADMIN_COOKIE_SECRET=<long-random-secret>
+LLM_DAILY_TOKEN_CAP=50000
+```
+
+Secure the file:
+
+```bash
+sudo chown root:ubuntu /etc/knowme/knowme.env
+sudo chmod 640 /etc/knowme/knowme.env
+```
+
+Verify variable names without exposing values:
+
+```bash
+sudo grep -E '^(ADMIN_PASSWORD|ADMIN_COOKIE_SECRET|OPENAI_API_KEY|ANALYTICS_SALT|LLM_DAILY_TOKEN_CAP)=' /etc/knowme/knowme.env | sed 's/=.*/=***/'
+```
+
+### 7. Create systemd service
+
+```bash
+sudo nano /etc/systemd/system/knowme.service
+```
+
+Service file:
+
+```ini
+[Unit]
+Description=KnowMe FastAPI App
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/knowme/backend
+EnvironmentFile=/etc/knowme/knowme.env
+ExecStart=/home/ubuntu/knowme/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable knowme
+sudo systemctl start knowme
+```
+
+Verify:
+
+```bash
+sudo systemctl status knowme --no-pager
+curl http://127.0.0.1:8001/health
+sudo ss -tlnp | grep 8001
+```
+
+Expected:
+
+```text
+Active: active (running)
+{"ok":true}
+127.0.0.1:8001
+```
+
+Do not expose port `8001` in the AWS security group.
+
+### 8. Configure Nginx
+
+```bash
+sudo nano /etc/nginx/sites-available/knowme
+```
+
+Nginx site:
+
+```nginx
+server {
+    listen 80;
+    server_name knowme.robvoto.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 120;
+        proxy_connect_timeout 30;
+        proxy_send_timeout 120;
+    }
+}
+```
+
+Enable:
+
+```bash
+sudo ln -sfn /etc/nginx/sites-available/knowme /etc/nginx/sites-enabled/knowme
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Verify HTTP routing:
+
+```bash
+curl -I -H "Host: knowme.robvoto.com" http://127.0.0.1/
+curl https://knowme.robvoto.com/health
+curl -I https://jobhunter.robvoto.com/start
+```
+
+### 9. Enable HTTPS
+
+Only run Certbot after the service and HTTP route work.
+
+```bash
+sudo certbot --nginx -d knowme.robvoto.com
+```
+
+Choose redirect to HTTPS when prompted.
+
+Verify certificate and routes:
+
+```bash
+curl -Iv https://knowme.robvoto.com/ 2>&1 | grep -E "subject:|issuer:|SSL certificate verify|HTTP/"
+curl https://knowme.robvoto.com/health
+curl -I https://jobhunter.robvoto.com/start
+sudo ss -tlnp | grep -E ':8001|:8765'
+sudo systemctl status knowme --no-pager
+sudo systemctl status job-hunter --no-pager
+```
+
+Expected:
+
+```text
+subject: CN=knowme.robvoto.com
+SSL certificate verify ok
+{"ok":true}
+127.0.0.1:8001
+127.0.0.1:8765
+```
+
+## Normal AWS update
+
+```bash
+use-ubuntu
+cd /home/ubuntu/knowme
+GIT_SSH_COMMAND='ssh -i ~/.ssh/knowme_deploy_key -o IdentitiesOnly=yes' git pull --ff-only
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+sudo systemctl restart knowme
+sudo systemctl status knowme --no-pager
+curl https://knowme.robvoto.com/health
+```
+
+## Diagnostics
+
+Check service:
+
+```bash
+sudo systemctl status knowme --no-pager
+sudo journalctl -u knowme -n 100 --no-pager
+```
+
+Check ports:
+
+```bash
+sudo ss -tlnp | grep -E ':8001|:8765|:80|:443'
+```
+
+Check Nginx routing:
+
+```bash
+sudo nginx -T | grep -nE 'server_name|default_server|proxy_pass|ssl_certificate|knowme|jobhunter'
+sudo nginx -t
+```
+
+Check local app:
+
+```bash
+curl http://127.0.0.1:8001/health
+```
+
+Check public app:
+
+```bash
+curl https://knowme.robvoto.com/health
+curl -I https://jobhunter.robvoto.com/start
+```
+
+## Common failures
+
+### `knowme.robvoto.com` shows Job Hunter
+
+The HTTPS request is falling through to the Job Hunter SSL server block.
+
+Fix by ensuring KnowMe has its own Nginx server block and certificate:
+
+```bash
+sudo nginx -T | grep -nE 'server_name|proxy_pass|ssl_certificate|knowme|jobhunter'
+sudo certbot --nginx -d knowme.robvoto.com
+```
+
+### `ADMIN_PASSWORD is required`
+
+Check the env file and service configuration:
+
+```bash
+sudo systemctl cat knowme
+sudo grep '^ADMIN_PASSWORD=' /etc/knowme/knowme.env | sed 's/=.*/=***/'
+```
+
+### `ADMIN_COOKIE_SECRET is required`
+
+Check:
+
+```bash
+sudo grep '^ADMIN_COOKIE_SECRET=' /etc/knowme/knowme.env | sed 's/=.*/=***/'
+```
+
+### Missing data files
+
+Check the symlink and persistent data:
+
+```bash
+ls -la /home/ubuntu/knowme/backend/data
+ls -la /var/lib/knowme/data
+```
+
+### `curl -I` returns 405
+
+Some KnowMe endpoints allow `GET` but not `HEAD`. Use normal `curl` for health checks:
+
+```bash
+curl https://knowme.robvoto.com/health
+```
+
+## Do not do
+
+Do not:
+
+```text
+Expose port 8001 publicly
+Store secrets in GitHub
+Run Certbot before KnowMe service and HTTP routing work
+Change Job Hunter service while deploying KnowMe
+Route unknown hostnames to Job Hunter
+Use robvoto.com as the KnowMe route
+Use AWS CloudShell as proof of EC2 runtime state
+Treat local VS Code state as proof of AWS runtime state
+```
 
 ## Local development
 
-From the repo root:
+From the repo root on Windows:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend/requirements.txt
-python -m backend.app.main
-```
-
-If you want to run Uvicorn directly from the repo root instead of using the module entrypoint:
-
-```powershell
 python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-If you want to use a custom port in PowerShell, set it explicitly first:
+Open:
 
-```powershell
-$env:PORT = 8000
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port $env:PORT --reload
+```text
+http://127.0.0.1:8000/
+http://127.0.0.1:8000/admin
 ```
-
-Then open `http://127.0.0.1:8000/` for the frontend or `http://127.0.0.1:8000/admin` for the admin UI.
-
-## Improvements included
-
-- Better landing page UX with sample questions, status messages, and clipboard support.
-- More usable admin dashboard with reload state, ingest feedback, and copy response support.
-- Cleaner styles and responsive layout.
-
-## Future recommendations
-
-- Add versioned backup of `backend/data/questions.log` if analytics need to scale.
-- Keep operational endpoints under `/api/*` unless a hosting platform requires a root-level path such as `/health`.
