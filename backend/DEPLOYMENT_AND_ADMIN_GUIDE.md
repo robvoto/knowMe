@@ -436,7 +436,36 @@ Installed commands:
 ```text
 /usr/local/bin/deploy-knowme
 /usr/local/bin/knowme-status
+/usr/local/bin/knowme-usage
 ```
+
+## Usage logs
+
+Raw question log:
+
+```bash
+tail -n 50 /var/lib/knowme/data/questions.log
+```
+
+Readable recent usage in Sydney time:
+
+```bash
+knowme-usage
+```
+
+Show more rows:
+
+```bash
+knowme-usage 50
+```
+
+Live raw log while testing:
+
+```bash
+tail -f /var/lib/knowme/data/questions.log
+```
+
+Stop live view with `Ctrl+C`.
 
 ## Normal AWS update
 
