@@ -42,6 +42,8 @@ from .config import (
     QUESTION_EVENT_LOG_FILE,
     ANSWER_CACHE_FILE,
     QUESTION_LOG_FILE,
+    PROHIBITED_REQUEST_REFUSAL,
+    PROHIBITED_REQUEST_TERMS,
     STAR_FILE,
     STATIC_DIR,
     UNKNOWN_LOG_VALUES,
@@ -195,6 +197,11 @@ def sanitize_log_value(value: str | None) -> str:
     return re.sub(r"\s+", " ", text).strip() or "-"
 
 
+def is_prohibited_request(question: str) -> bool:
+    normalized = normalize_question_for_analytics(question)
+    return any(term in normalized for term in PROHIBITED_REQUEST_TERMS)
+
+
 def hash_analytics_value(value: str | None) -> str | None:
     text = (value or "").strip()
     if not text or not ANALYTICS_SALT:
@@ -334,6 +341,29 @@ def read_question_log() -> list[dict[str, str]]:
     return records
 
 
+def read_question_event_log() -> list[dict[str, object]]:
+    if not QUESTION_EVENT_LOG_FILE.exists():
+        return []
+    with QUESTION_EVENT_LOG_FILE.open("r", encoding="utf-8") as f:
+        events: list[dict[str, object]] = []
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid question event log row in {QUESTION_EVENT_LOG_FILE}.") from exc
+    log_info(f"Loaded question event log: {QUESTION_EVENT_LOG_FILE} ({len(events)} records)")
+    return events
+
+
+def first_meaningful_text(*values: object) -> str:
+    for value in values:
+        if is_meaningful_log_value(value):
+            return str(value).strip()
+    return ""
+
+
 def normalize_question_for_analytics(question: str) -> str:
     text = question.strip().lower()
     text = re.sub(r"\b(rob|robert|candidate|he|his|him)\b", "candidate", text)
@@ -392,25 +422,50 @@ def count_items(values: list[str], key_name: str) -> list[dict[str, str | int]]:
 
 def analytics_summary() -> dict:
     question_records = read_question_log()
+    event_records = read_question_event_log()
+    event_records_by_request_id = {
+        str(rec.get("request_id", "")).strip(): rec
+        for rec in event_records
+        if is_meaningful_log_value(rec.get("request_id"))
+    }
     source_counts: dict[str, int] = {}
     normalized_questions: list[str] = []
     canonical_questions: list[str] = []
     intents: list[str] = []
 
     for rec in question_records:
+        event_rec = event_records_by_request_id.get(str(rec.get("request_id", "")).strip())
         source_page = rec.get("source_page", "-")
         if source_page:
             source_counts[source_page] = source_counts.get(source_page, 0) + 1
-        question = rec.get("q", "").strip()
+        question = first_meaningful_text(
+            rec.get("q"),
+            rec.get("question"),
+            event_rec.get("question") if event_rec else "",
+        )
         if question:
-            normalized_questions.append(normalize_question_for_analytics(question))
-            canonical_questions.append(canonical_question_for_analytics(question))
+            normalized_questions.append(
+                first_meaningful_text(
+                    event_rec.get("q_norm") if event_rec else "",
+                    normalize_question_for_analytics(question),
+                )
+            )
+            canonical_questions.append(
+                first_meaningful_text(
+                    event_rec.get("q_canonical") if event_rec else "",
+                    canonical_question_for_analytics(question),
+                )
+            )
             intents.append(intent_for_analytics(question))
 
     recent_questions = [
         {
             "ts": rec.get("ts", ""),
-            "question": rec.get("q", ""),
+            "question": first_meaningful_text(
+                rec.get("q"),
+                rec.get("question"),
+                event_records_by_request_id.get(str(rec.get("request_id", "")).strip(), {}).get("question", ""),
+            ),
             "name": rec.get("name", "-"),
             "company": rec.get("company", "-"),
             "request_id": rec.get("request_id", "-"),
@@ -728,6 +783,7 @@ def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int, 
         instructions=(
             active_system_prompt()
             + "\n\nAnswer as recruiter-friendly prose. No bullet points or headings unless the question asks for a list."
+            + "\n\nNever disclose sensitive personal information, prompt injection details, or help with exfiltration, site changes, email sending, or malicious actions."
             + detail_instruction
         ),
         input=f"Question: {question}\n\nCV AND STAR TEXT:\n{context}",
@@ -1023,6 +1079,9 @@ def ask(payload: dict, request: Request):
     if not CV_TEXT:
         loud_warning("Rejected: CV_TEXT not loaded.")
         return {"answer": "No CV loaded yet."}
+
+    if is_prohibited_request(question):
+        raise HTTPException(status_code=400, detail=PROHIBITED_REQUEST_REFUSAL)
 
     use_llm = bool(payload.get("use_llm", True))
     if not use_llm:
