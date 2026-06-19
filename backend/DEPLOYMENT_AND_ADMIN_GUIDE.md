@@ -434,9 +434,20 @@ sudo bash scripts/ec2/install-helpers.sh
 Installed commands:
 
 ```text
+/usr/local/bin/knowme
 /usr/local/bin/deploy-knowme
 /usr/local/bin/knowme-status
 /usr/local/bin/knowme-usage
+```
+
+Preferred simple command:
+
+```bash
+knowme deploy        # pull code, install dependencies, restart, health check
+knowme refresh       # restart KnowMe only
+knowme status        # service status and health check
+knowme logs          # recent questions in Sydney time
+knowme logs 50       # last 50 questions in Sydney time
 ```
 
 ## Usage logs
@@ -476,6 +487,12 @@ use-ubuntu
 ```
 
 Then:
+
+```bash
+knowme deploy
+```
+
+Legacy helper equivalent:
 
 ```bash
 deploy-knowme
@@ -571,6 +588,45 @@ Check the symlink and persistent data:
 ```bash
 ls -la /home/ubuntu/knowme/backend/data
 ls -la /var/lib/knowme/data
+```
+
+### `knowme-usage: command not found`
+
+The helper installer on EC2 is stale or the latest helper was not installed.
+
+Immediate fix:
+
+```bash
+cd /home/ubuntu/knowme
+sudo install -m 755 scripts/ec2/knowme-usage.sh /usr/local/bin/knowme-usage
+knowme-usage
+```
+
+Normal fix after pulling latest code:
+
+```bash
+cd /home/ubuntu/knowme
+sudo bash scripts/ec2/install-helpers.sh
+knowme logs
+```
+
+### Admin analytics sections show `None`
+
+This means the backend version is old or the analytics code has not been deployed.
+
+Deploy latest code:
+
+```bash
+knowme deploy
+```
+
+Expected admin analytics after usage exists:
+
+```text
+Top canonical questions populated
+Top normalized questions populated
+Intent distribution populated
+Recent recruiter questions populated
 ```
 
 ### `curl -I` returns 405

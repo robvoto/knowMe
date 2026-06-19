@@ -279,14 +279,49 @@ def log_question_event(question: str, name: str | None, company: str | None, met
 # ------------------------
 
 def parse_question_log_line(line: str) -> dict[str, str]:
-    parts = [part.strip() for part in line.split("|") if part.strip()]
-    record = {"raw": line}
-    if parts:
+    """Parse current and legacy question log rows.
+
+    Current rows are pipe-delimited key/value pairs:
+    ts | request_id=... | ... | q=...
+
+    Older rows may be positional:
+    ts | name | company | question
+
+    The admin analytics depends on record['q']. If older rows are counted
+    but no q field is recovered, the dashboard shows Questions > 0 while
+    Top questions / Intent distribution / Recent questions appear empty.
+    """
+    raw = line.rstrip("\n")
+    parts = [part.strip() for part in raw.split("|")]
+    record = {"raw": raw}
+    positional_parts: list[str] = []
+
+    if parts and parts[0]:
         record["ts"] = parts[0]
+
     for part in parts[1:]:
+        if not part:
+            continue
         if "=" in part:
             key, value = part.split("=", 1)
             record[key.strip()] = value.strip()
+        else:
+            positional_parts.append(part)
+
+    # Backward compatibility for older log formats or hand-edited rows.
+    if not record.get("q"):
+        if record.get("question"):
+            record["q"] = record["question"].strip()
+        elif positional_parts:
+            if len(positional_parts) >= 1 and "name" not in record:
+                record["name"] = positional_parts[0]
+            if len(positional_parts) >= 2 and "company" not in record:
+                record["company"] = positional_parts[1]
+            if len(positional_parts) >= 3:
+                record["q"] = " | ".join(positional_parts[2:]).strip()
+            else:
+                record["q"] = positional_parts[-1].strip()
+
     return record
 
 
@@ -299,13 +334,78 @@ def read_question_log() -> list[dict[str, str]]:
     return records
 
 
+def normalize_question_for_analytics(question: str) -> str:
+    text = question.strip().lower()
+    text = re.sub(r"\b(rob|robert|candidate|he|his|him)\b", "candidate", text)
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "unknown question"
+
+
+def canonical_question_for_analytics(question: str) -> str:
+    normalized = normalize_question_for_analytics(question)
+    if any(term in normalized for term in ("dob", "date of birth", "birth date", "age")):
+        return "Personal details / age"
+    if "reference" in normalized:
+        return "References"
+    if "weakness" in normalized:
+        return "Weaknesses"
+    if "bpmn" in normalized or "process" in normalized:
+        return "BPMN / process examples"
+    if "fit" in normalized or "shortlist" in normalized or "why" in normalized:
+        return "Fit / shortlist rationale"
+    if "star" in normalized or "example" in normalized:
+        return "STAR / concrete examples"
+    if any(term in normalized for term in ("tool", "jira", "confluence", "sql", "aws", "api")):
+        return "Tools / technical capability"
+    return normalized[:80]
+
+
+def intent_for_analytics(question: str) -> str:
+    normalized = normalize_question_for_analytics(question)
+    if any(term in normalized for term in ("dob", "date of birth", "birth date", "age")):
+        return "privacy_or_personal"
+    if "reference" in normalized:
+        return "references"
+    if "weakness" in normalized:
+        return "risk_or_weakness"
+    if "bpmn" in normalized or "process" in normalized:
+        return "process_experience"
+    if "fit" in normalized or "shortlist" in normalized or "why" in normalized:
+        return "fit_assessment"
+    if "star" in normalized or "example" in normalized:
+        return "evidence_examples"
+    if any(term in normalized for term in ("tool", "jira", "confluence", "sql", "aws", "api")):
+        return "tool_or_technical"
+    return "general_question"
+
+
+def count_items(values: list[str], key_name: str) -> list[dict[str, str | int]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return [
+        {key_name: value, "count": count}
+        for value, count in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    ]
+
+
 def analytics_summary() -> dict:
     question_records = read_question_log()
     source_counts: dict[str, int] = {}
+    normalized_questions: list[str] = []
+    canonical_questions: list[str] = []
+    intents: list[str] = []
+
     for rec in question_records:
         source_page = rec.get("source_page", "-")
         if source_page:
             source_counts[source_page] = source_counts.get(source_page, 0) + 1
+        question = rec.get("q", "").strip()
+        if question:
+            normalized_questions.append(normalize_question_for_analytics(question))
+            canonical_questions.append(canonical_question_for_analytics(question))
+            intents.append(intent_for_analytics(question))
 
     recent_questions = [
         {
@@ -339,11 +439,10 @@ def analytics_summary() -> dict:
         "hashed_ip_enabled": bool(ANALYTICS_SALT),
         "source_page_counts": [{"source_page": s, "count": c} for s, c in sorted(source_counts.items(), key=lambda x: x[1], reverse=True)],
         "recent_questions": recent_questions,
-        # kept for admin UI compatibility - no longer populated
-        "top_canonical_questions": [],
-        "top_normalized_questions": [],
-        "intent_counts": [],
-        "intent_event_count": 0,
+        "top_canonical_questions": count_items(canonical_questions, "question"),
+        "top_normalized_questions": count_items(normalized_questions, "question"),
+        "intent_counts": count_items(intents, "intent"),
+        "intent_event_count": len(intents),
     }
 
 # ------------------------

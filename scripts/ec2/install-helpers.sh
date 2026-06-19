@@ -17,9 +17,16 @@ install_helper() {
   echo "Installed $TARGET_DIR/$command_name"
 }
 
+install_helper "knowme.sh" "knowme"
 install_helper "deploy-knowme.sh" "deploy-knowme"
 install_helper "knowme-status.sh" "knowme-status"
+install_helper "knowme-usage.sh" "knowme-usage"
 
 echo "KnowMe EC2 helpers installed."
+echo "Use: knowme deploy"
+echo "Use: knowme refresh"
+echo "Use: knowme status"
+echo "Use: knowme logs [count]"
 echo "Use: deploy-knowme"
 echo "Use: knowme-status"
+echo "Use: knowme-usage [count]"
