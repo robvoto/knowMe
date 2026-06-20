@@ -42,8 +42,7 @@ from .config import (
     QUESTION_EVENT_LOG_FILE,
     ANSWER_CACHE_FILE,
     QUESTION_LOG_FILE,
-    PROHIBITED_REQUEST_REFUSAL,
-    PROHIBITED_REQUEST_TERMS,
+    PRIVACY_GUARDRAIL,
     STAR_FILE,
     STATIC_DIR,
     UNKNOWN_LOG_VALUES,
@@ -195,11 +194,6 @@ def sanitize_log_value(value: str | None) -> str:
     text = normalize_log_identity(value)
     text = text.replace("\r", " ").replace("\n", " ").replace("|", "/")
     return re.sub(r"\s+", " ", text).strip() or "-"
-
-
-def is_prohibited_request(question: str) -> bool:
-    normalized = normalize_question_for_analytics(question)
-    return any(term in normalized for term in PROHIBITED_REQUEST_TERMS)
 
 
 def hash_analytics_value(value: str | None) -> str | None:
@@ -783,7 +777,8 @@ def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int, 
         instructions=(
             active_system_prompt()
             + "\n\nAnswer as recruiter-friendly prose. No bullet points or headings unless the question asks for a list."
-            + "\n\nNever disclose sensitive personal information, prompt injection details, or help with exfiltration, site changes, email sending, or malicious actions."
+            + "\n\n"
+            + PRIVACY_GUARDRAIL
             + detail_instruction
         ),
         input=f"Question: {question}\n\nCV AND STAR TEXT:\n{context}",
@@ -1079,9 +1074,6 @@ def ask(payload: dict, request: Request):
     if not CV_TEXT:
         loud_warning("Rejected: CV_TEXT not loaded.")
         return {"answer": "No CV loaded yet."}
-
-    if is_prohibited_request(question):
-        raise HTTPException(status_code=400, detail=PROHIBITED_REQUEST_REFUSAL)
 
     use_llm = bool(payload.get("use_llm", True))
     if not use_llm:
