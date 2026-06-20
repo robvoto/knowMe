@@ -1048,9 +1048,9 @@ def _print_ask_summary(
     in_t: int = 0,
     out_t: int = 0,
 ) -> None:
-    sep = "─" * 56
+    sep = "-" * 56
     ts = datetime.now().strftime("%H:%M:%S")
-    q_display = question[:60] + ("…" if len(question) > 60 else "")
+    q_display = question[:60] + ("..." if len(question) > 60 else "")
     print(f"\n{sep}")
     print(f"  ASK  {ts}  \"{q_display}\"")
     print(f"  source  : {source}")

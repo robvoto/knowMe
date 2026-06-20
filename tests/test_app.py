@@ -94,19 +94,17 @@ class KnowMeAppTests(TestCase):
             "Rob Voto",
             "Use KnowMe to explore real project evidence, examples, tools, and role fit.",
             "Senior Business Analyst focused on complex delivery, process, data, and AI-enabled workflow systems.",
-            "Evidence",
-            "Delivery",
-            "AI / automation",
-            "label-tip-group",
-            "Question template",
-            "For better answers, ask a specific question",
-            "Stakeholder example",
-            "Process improvement",
-            "Technical teams",
-            "index.js?v=public1",
+            "Tap a question to ask it",
+            "Or type your own below",
+            "For better answers, ask a specific question or turn on AI rewrite for a more polished summary.",
+            "Use AI rewrite",
+            "More detail",
+            "Ask question",
+            "interactive CV assistant",
+            "index.js?v=public2",
             ">i</span>",
             "askBtn",
-            "main-style.css?v=hero21",
+            "main-style.css?v=hero23",
         )
 
     def test_admin_page_contains_expected_endpoints(self):
@@ -122,6 +120,7 @@ class KnowMeAppTests(TestCase):
             "Reads the current CV, STAR, and prompt files from disk",
             "Prompt defaults live in",
             "Saving here writes to <code>backend/data/cv.txt</code>",
+            "Questions about private personal information are blocked.",
         )
 
     def test_startup_loads_content(self):
@@ -343,7 +342,7 @@ class KnowMeAppTests(TestCase):
         def fake_rewrite(question, detail_level="concise"):
             captured["question"] = question
             captured["detail_level"] = detail_level
-            return "Rewritten answer.", 123
+            return "Rewritten answer.", 123, 0.0, 0, 0
 
         def fake_record(logging_context, tokens_used):
             captured["tokens_used"] = tokens_used
@@ -368,7 +367,7 @@ class KnowMeAppTests(TestCase):
 
         def fake_rewrite(question, context, detail_level="concise"):
             call_count["rewrite"] += 1
-            return "Cached answer.", 111
+            return "Cached answer.", 111, 0.0, 0, 0
 
         with patch.object(appmod, "enforce_llm_rate_limit", fake_budget), patch.object(appmod, "llm_answer", fake_rewrite):
             first = self.client.post(
