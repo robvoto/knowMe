@@ -80,12 +80,14 @@ Required environment variables:
 
 - `ADMIN_PASSWORD`
 - `ADMIN_COOKIE_SECRET`
+- `OPENAI_API_KEY` — required for live Q&A responses; without it, uncached ask requests return a service-unavailable response
 
 Optional runtime variables:
 
-- `OPENAI_API_KEY`
 - `ANALYTICS_SALT`
 - `LLM_DAILY_TOKEN_CAP`
+
+The application checks `OPENAI_API_KEY` before sending a live model request.
 
 Never commit real credentials or production environment files.
 
