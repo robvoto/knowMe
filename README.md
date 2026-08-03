@@ -1,64 +1,111 @@
-# knowMe
-Interactive personalised CV assistant for recruiter questions.
+# KnowMe — Grounded Interactive CV Assistant
 
-KnowMe is a lightweight FastAPI backend with a static frontend for intelligent CV Q&A.
+KnowMe is an AI-assisted CV question-and-answer application designed for recruiters and hiring managers. It turns structured career material into concise answers while keeping the candidate's supplied CV and STAR examples as the source of truth.
 
-- Web UI: `/`
-- Admin UI: `/admin`
-- Backend entrypoint: `backend/app/main.py`
-- Dependencies: `backend/requirements.txt`
-- Production deployment: AWS-hosted service
-- Legacy deployment manifest: `render.yaml`
+## Live application
 
-## Local development
+**[Open KnowMe](https://knowme.robvoto.com)**
 
-From the repository root, change into the backend folder:
+## Problem
+
+A static CV cannot answer follow-up questions, explain context, or adapt the level of detail to a recruiter's needs. Generic chatbots create a different problem: they may produce plausible but unsupported claims.
+
+KnowMe addresses both issues by combining a recruiter-facing interface with bounded candidate material and explicit answer controls.
+
+## Current capabilities
+
+- recruiter-style questions through a public web interface;
+- grounded answers based on CV and STAR source material;
+- structured STAR responses when a relevant example is available;
+- administrative ingestion and prompt management;
+- answer caching and configurable LLM usage controls;
+- operational health, readiness, and analytics endpoints;
+- question-length and prohibited-request safeguards.
+
+## Architecture
+
+```text
+Recruiter browser
+      │
+      ▼
+Static HTML/CSS/JavaScript interface
+      │
+      ▼
+FastAPI application
+      ├── CV and STAR source material
+      ├── prompt configuration
+      ├── answer cache and usage controls
+      └── OpenAI API
+```
+
+The application is deployed on AWS behind a web proxy. Runtime data and secrets are kept outside source control in production.
+
+## Repository structure
+
+```text
+.
+├── backend/
+│   ├── app/                    # FastAPI application and configuration
+│   ├── static/                 # Recruiter and admin interfaces
+│   ├── data/                   # Default/source content used by the application
+│   ├── requirements.txt
+│   └── DEPLOYMENT_AND_ADMIN_GUIDE.md
+├── tests/                      # Automated application tests
+├── docs/API_REFERENCE.md       # API route summary
+├── .env.example                # Local configuration template
+└── LICENSE
+```
+
+## Local setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
+cp .env.example backend/.env
+```
+
+Set the required values in `backend/.env`, then run:
 
 ```bash
 cd backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Install dependencies once:
+Open `http://127.0.0.1:8000/`.
 
-```bash
-pip install -r requirements.txt
-```
+## Configuration
 
-Start the server locally:
+Required environment variables:
 
-```bash
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+- `ADMIN_PASSWORD`
+- `ADMIN_COOKIE_SECRET`
 
-Open the app in your browser:
+Optional runtime variables:
 
-- Public UI: `http://127.0.0.1:8000/`
-- Admin UI: `http://127.0.0.1:8000/admin`
+- `OPENAI_API_KEY`
+- `ANALYTICS_SALT`
+- `LLM_DAILY_TOKEN_CAP`
 
-Health and readiness checks:
+Never commit real credentials or production environment files.
 
-- `http://127.0.0.1:8000/health` - hosting health check
-- `http://127.0.0.1:8000/api/ready` - app content readiness
+## Privacy and security boundaries
 
-Agent-friendly API endpoints:
-
-- `POST http://127.0.0.1:8000/api/ingest_cv`
-- `POST http://127.0.0.1:8000/api/ingest_star`
-- `POST http://127.0.0.1:8000/api/ask`
-- `GET  http://127.0.0.1:8000/api/admin_state`
-- `GET  http://127.0.0.1:8000/api/analytics`
-- `GET  http://127.0.0.1:8000/api/reload`
-- `GET  http://127.0.0.1:8000/api/status`
-- `GET  http://127.0.0.1:8000/api/ready`
-- `GET  http://127.0.0.1:8000/api/health`
-- `GET  http://127.0.0.1:8000/api/docs`
-
-Use `/api/*` for application and automation calls. Non-API legacy routes have been removed except `/health`, which is kept for hosting health checks.
-
-Use `/api/docs` to discover the available agent endpoints and their purpose.
+- Administrator credentials and API keys are loaded from environment variables.
+- The public interface does not expose the admin password or OpenAI key.
+- Questions and optional recruiter details may be recorded for application analytics, so production logs and persistent data must be treated as personal information.
+- Client IP analytics are hashed only when an analytics salt is configured.
+- Candidate source material in `backend/data/` is deliberately part of this personal portfolio repository; runtime logs, caches, and production secrets are not.
 
 ## Documentation
 
-See `backend/DEPLOYMENT_AND_ADMIN_GUIDE.md` for deployment, admin operations, logging, and normalization details.
+- [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) — supported application endpoints
+- [`backend/DEPLOYMENT_AND_ADMIN_GUIDE.md`](backend/DEPLOYMENT_AND_ADMIN_GUIDE.md) — AWS deployment and administration
 
-The app is deployed on AWS at `knowme.robvoto.com`. Legacy Render configuration is still kept in source control for reference.
+## Project status
+
+Active and maintained. The primary deployment is AWS; `render.yaml` remains only as a legacy deployment artefact and is not the current production path.
+
+## Licence
+
+Licensed under the MIT License. See [`LICENSE`](LICENSE).
