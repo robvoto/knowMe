@@ -87,7 +87,7 @@ Optional runtime variables:
 - `ANALYTICS_SALT`
 - `LLM_DAILY_TOKEN_CAP`
 
-Static pages, health checks, and administrative surfaces can start without `OPENAI_API_KEY`, but the application's live answer capability cannot.
+The application checks `OPENAI_API_KEY` before sending a live model request.
 
 Never commit real credentials or production environment files.
 
