@@ -51,3 +51,8 @@
 - The app serves static HTML and CSS directly from `backend/static`.
 - Public UI copy should remain consistent with the current product language.
 - Admin flows should stay aligned with existing labels and IDs.
+
+## Repository text format
+
+- All tracked text files use LF line endings. .gitattributes and .editorconfig are authoritative; do not introduce or preserve CRLF.
+- Before finishing edits, run git diff --check. If a touched tracked text file is CRLF or mixed, normalize that touched file to LF without rewriting unrelated dirty work.
