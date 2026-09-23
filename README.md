@@ -101,12 +101,13 @@ Never commit real credentials or production environment files.
 
 ## Documentation
 
+- [`docs/INDEX.md`](docs/INDEX.md) — documentation entry point
 - [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) — supported application endpoints
 - [`backend/DEPLOYMENT_AND_ADMIN_GUIDE.md`](backend/DEPLOYMENT_AND_ADMIN_GUIDE.md) — AWS deployment and administration
 
 ## Project status
 
-Active and maintained. The primary deployment is AWS; `render.yaml` remains only as a legacy deployment artefact and is not the current production path.
+Active and maintained. The production deployment is AWS.
 
 ## Licence
 
