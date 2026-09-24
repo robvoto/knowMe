@@ -12,6 +12,8 @@
 - Do not introduce heuristic data, random filter words, sample labels, or inferred rules without asking first.
 - Do not hide errors behind generic success paths. Surface missing or invalid state clearly.
 - If unsure, stop and ask before changing behaviour.
+- Before any semantic/product/UX/business-rule/default/workflow/data-interpretation/classification/heuristic/fallback/persistent-data behaviour change: investigate, explain the current finding and exact proposed effect, then wait for Rob's explicit approval. Treat uncertain changes as semantic; mechanical no-behaviour changes may proceed.
+- Never claim a preference, rule, memory, or instruction is persisted unless the authoritative persistent source was actually updated and verified.
 
 ## Source Of Truth
 - Backend entrypoint: `backend/app/main.py`
