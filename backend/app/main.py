@@ -1209,7 +1209,10 @@ def ask(payload: dict, request: Request):
             if not budget.settle(reservation, LLM_RESERVED_TOKENS_PER_REQUEST):
                 loud_warning("AI budget reservation settlement not confirmed.")
             raise
-        if not budget.settle(reservation, tokens_used):
+        # Missing/zero provider usage is not proof that the request was free.
+        # Conservatively retain the entire reservation in that case.
+        accounted_tokens = tokens_used if tokens_used > 0 else LLM_RESERVED_TOKENS_PER_REQUEST
+        if not budget.settle(reservation, accounted_tokens):
             raise RuntimeError("AI usage reservation could not be settled.")
         # SQLite is now the sole writer of new spending/cooldown data. The
         # legacy JSON ledger is read only to migrate historical usage.
