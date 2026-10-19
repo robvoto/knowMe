@@ -17,6 +17,7 @@ import re
 import json
 import mimetypes
 import hashlib
+import hmac
 import threading
 import time
 import uuid
@@ -692,8 +693,7 @@ def get_rate_limit_identity(logging_context: dict[str, str]) -> str:
 
 
 def is_admin_session(request: Request) -> bool:
-    token = request.cookies.get(ADMIN_COOKIE_NAME, "")
-    return bool(token) and secrets.compare_digest(token, build_admin_cookie())
+    return validate_admin_cookie(request.cookies.get(ADMIN_COOKIE_NAME, ""))
 
 
 def get_llm_budget_status() -> LlmBudgetStatus:
@@ -810,12 +810,31 @@ def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int, 
 # ------------------------
 
 def build_admin_cookie() -> str:
-    return hashlib.sha256(f"{ADMIN_COOKIE_SECRET}:admin".encode("utf-8")).hexdigest()
+    # Each login gets a distinct session, with an enforced server-side age limit.
+    timestamp = str(int(time.time()))
+    nonce = secrets.token_urlsafe(24)
+    message = f"{timestamp}.{nonce}"
+    signature = hmac.new(ADMIN_COOKIE_SECRET.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{message}.{signature}"
+
+
+def validate_admin_cookie(token: str) -> bool:
+    try:
+        timestamp, nonce, signature = token.split(".")
+        issued = int(timestamp)
+        age = time.time() - issued
+        if not nonce or not 0 <= age <= 60 * 60 * 8:
+            return False
+        message = f"{timestamp}.{nonce}"
+        expected = hmac.new(ADMIN_COOKIE_SECRET.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+    except (ValueError, AttributeError):
+        return False
 
 
 def require_admin_auth(request: Request) -> None:
     token = request.cookies.get(ADMIN_COOKIE_NAME, "")
-    if not token or not secrets.compare_digest(token, build_admin_cookie()):
+    if not validate_admin_cookie(token):
         raise HTTPException(status_code=401, detail="Admin login required.")
 
 # ------------------------
