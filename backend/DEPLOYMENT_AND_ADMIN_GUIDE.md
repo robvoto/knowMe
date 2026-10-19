@@ -684,3 +684,7 @@ This guard is **not** a global billing hard cap: additional Uvicorn workers/inst
 ### Cross-origin admin logout protection (19 October 2026)
 
 The admin logout endpoint rejects an explicitly supplied `Origin` that does not match the application base URL and clears the HTTPS-only, HttpOnly, SameSite=Strict session cookie. Verify that the public reverse proxy preserves the canonical HTTPS host/scheme so same-origin logout works in the deployed environment. Tests cover blocked cross-site logout and successful same-origin logout; all 25 local tests passed (exit code 0). This does not replace the remaining public-relaunch proxy and shared-spend checks.
+
+### Spending ledger corruption protection (19 October 2026)
+
+The paid-LLM usage ledger now fails closed when existing JSON is unreadable or malformed, rather than resetting to zero and permitting further paid requests. Writes stage a unique temporary file and replace the ledger atomically to reduce torn-file corruption. An absent ledger remains valid for first launch. Regression tests cover corrupted JSON and successful atomic replacement; 27 local tests passed with exit code 0. This does **not** solve cross-process spending reservations: KnowMe issue #4 remains open until a shared atomic budget is implemented and concurrency-tested.
