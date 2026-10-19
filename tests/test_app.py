@@ -134,6 +134,11 @@ class KnowMeAppTests(TestCase):
         self.assertGreater(payload["cv_length"], 0)
         self.assertGreater(payload["star_length"], 0)
 
+    def test_direct_developer_launch_is_loopback_only(self):
+        source = (Path(appmod.__file__)).read_text(encoding="utf-8")
+        self.assertIn('uvicorn.run("backend.app.main:app", host="127.0.0.1", port=8000, reload=False)', source)
+        self.assertNotIn('uvicorn.run("backend.app.main:app", host="0.0.0.0"', source)
+
     def test_security_response_headers(self):
         public = self.client.get("/")
         self.assertEqual(public.headers.get("x-content-type-options"), "nosniff")
