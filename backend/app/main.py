@@ -810,20 +810,22 @@ def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int, 
         else ""
     )
 
+    # Bound encoded UTF-8 input before calling the paid provider. This is a
+    # deliberately conservative byte ceiling, not an exact tokenizer count.
+    instructions = (active_system_prompt()
+        + "\n\nAnswer as recruiter-friendly prose. No bullet points or headings unless the question asks for a list."
+        + "\n\n" + PRIVACY_GUARDRAIL + detail_instruction)
+    model_input = f"Question: {question}\n\nCV AND STAR TEXT:\n{context}"
+    if len(model_input.encode("utf-8")) + len(instructions.encode("utf-8")) > 24000:
+        raise RuntimeError("AI input too large for reserved spending allowance.")
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OpenAI API key is not configured.")
 
     start = time.perf_counter()
     resp = client.responses.create(
         model=LLM_MODEL,
-        instructions=(
-            active_system_prompt()
-            + "\n\nAnswer as recruiter-friendly prose. No bullet points or headings unless the question asks for a list."
-            + "\n\n"
-            + PRIVACY_GUARDRAIL
-            + detail_instruction
-        ),
-        input=f"Question: {question}\n\nCV AND STAR TEXT:\n{context}",
+        instructions=instructions,
+        input=model_input,
         temperature=0.2,
         max_output_tokens=LLM_MAX_OUTPUT_TOKENS,
     )
