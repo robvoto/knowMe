@@ -647,11 +647,11 @@ def load_llm_usage() -> LlmUsageState:
         return {}
     try:
         raw = json.loads(LLM_USAGE_PATH.read_text(encoding="utf-8"))
-    except Exception as exc:
-        loud_warning(f"LLM usage file unreadable: {exc}")
-        return {}
+    except (OSError, ValueError) as exc:
+        loud_warning(f"LLM usage file unreadable: {type(exc).__name__}")
+        raise RuntimeError("LLM budget unavailable; paid requests disabled.") from exc
     if not isinstance(raw, dict):
-        return {}
+        raise RuntimeError("LLM budget malformed; paid requests disabled.")
     state: LlmUsageState = {}
     for key, value in raw.items():
         state[key] = normalize_llm_day_state(value)
@@ -660,7 +660,12 @@ def load_llm_usage() -> LlmUsageState:
 
 def save_llm_usage(state: LlmUsageState) -> None:
     LLM_USAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    LLM_USAGE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary_path = LLM_USAGE_PATH.with_name(LLM_USAGE_PATH.name + "." + secrets.token_hex(8) + ".tmp")
+    try:
+        temporary_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary_path, LLM_USAGE_PATH)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def coerce_int(value: object, default: int = 0) -> int:
