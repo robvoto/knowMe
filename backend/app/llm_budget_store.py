@@ -16,6 +16,12 @@ class BudgetExhausted(Exception):
     pass
 
 
+class CooldownActive(Exception):
+    def __init__(self, seconds: int):
+        self.seconds = seconds
+        super().__init__(f"AI cooldown active for {seconds} seconds")
+
+
 class SqliteTokenBudget:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
@@ -74,7 +80,7 @@ class SqliteTokenBudget:
                 conn.execute("ROLLBACK")
                 raise
 
-    def reserve(self, day: str, amount: int, daily_limit: int) -> str:
+    def reserve(self, day: str, amount: int, daily_limit: int, *, identity: str | None = None, now: float | None = None, cooldown_seconds: int = 0) -> str:
         """Atomically claim estimated tokens before contacting a paid provider."""
         if amount <= 0 or daily_limit <= 0 or amount > daily_limit:
             raise ValueError("Invalid token reservation or daily limit")
@@ -83,6 +89,13 @@ class SqliteTokenBudget:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute("INSERT OR IGNORE INTO daily_budget(day) VALUES (?)", (day,))
+                if identity is not None:
+                    if not identity or now is None or cooldown_seconds <= 0:
+                        raise ValueError("Invalid peer cooldown parameters")
+                    conn.execute("CREATE TABLE IF NOT EXISTS peer_cooldown (identity TEXT PRIMARY KEY, last_ts REAL NOT NULL)")
+                    previous = conn.execute("SELECT last_ts FROM peer_cooldown WHERE identity=?", (identity,)).fetchone()
+                    if previous is not None and now - float(previous[0]) < cooldown_seconds:
+                        raise CooldownActive(max(1, int(cooldown_seconds - (now - float(previous[0])) + 0.999)))
                 cursor = conn.execute(
                     "UPDATE daily_budget SET reserved=reserved+? WHERE day=? AND spent+reserved+?<=?",
                     (amount, day, amount, daily_limit),
@@ -90,6 +103,8 @@ class SqliteTokenBudget:
                 if cursor.rowcount != 1:
                     raise BudgetExhausted("Daily AI budget unavailable")
                 conn.execute("INSERT INTO reservations(id,day,amount,state) VALUES (?,?,?,'pending')", (reservation_id, day, amount))
+                if identity is not None:
+                    conn.execute("INSERT INTO peer_cooldown(identity,last_ts) VALUES (?,?) ON CONFLICT(identity) DO UPDATE SET last_ts=excluded.last_ts", (identity, now))
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
