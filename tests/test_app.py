@@ -185,6 +185,37 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(appmod.load_llm_usage()["2026-10-19"]["tokens_used"], 45)
         self.assertEqual(list(self.temp_path.glob("*.tmp")), [])
 
+    def test_real_ai_request_reserves_and_settles_sqlite_budget(self):
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        with patch.object(appmod, "enforce_llm_rate_limit", lambda *args: None), patch.object(
+            appmod, "llm_answer", return_value=("Safe response", 120, 0.01, 100, 20)
+        ), patch.object(appmod, "record_llm_usage", lambda *args: None):
+            response = self.client.post(self.ASK_PATH, json={"question": "Explain project delivery", "use_llm": True})
+        self.assertEqual(response.status_code, 200)
+        spent, reserved = SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(appmod.utc_today_key())
+        self.assertEqual((spent, reserved), (120, 0))
+
+    def test_provider_error_conservatively_consumes_reserved_budget(self):
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        with patch.object(appmod, "enforce_llm_rate_limit", lambda *args: None), patch.object(
+            appmod, "llm_answer", side_effect=TimeoutError("ambiguous upstream timeout")
+        ):
+            response = self.client.post(self.ASK_PATH, json={"question": "Explain portfolio ownership", "use_llm": True})
+        self.assertEqual(response.status_code, 503)
+        spent, reserved = SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(appmod.utc_today_key())
+        self.assertEqual((spent, reserved), (appmod.LLM_RESERVED_TOKENS_PER_REQUEST, 0))
+        self.assertNotIn("ambiguous upstream timeout", response.text)
+
+    def test_real_ai_request_denied_when_sqlite_budget_exhausted(self):
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        store = SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3"))
+        store.import_legacy_floor(appmod.utc_today_key(), appmod.LLM_DAILY_TOKEN_CAP)
+        with patch.object(appmod, "enforce_llm_rate_limit", lambda *args: None), patch.object(
+            appmod, "llm_answer", side_effect=AssertionError("Paid provider must not be called")
+        ):
+            response = self.client.post(self.ASK_PATH, json={"question": "Explain cloud projects", "use_llm": True})
+        self.assertEqual(response.status_code, 429)
+
     def test_paid_request_gate_rejects_overlapping_calls(self):
         self.assertTrue(appmod._LLM_REQUEST_GATE.acquire(blocking=False))
         try:
