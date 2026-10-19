@@ -54,6 +54,26 @@ class SqliteTokenBudget:
                 conn.execute("ROLLBACK")
                 raise
 
+    def claim_identity_cooldown(self, identity: str, now: float, cooldown_seconds: int) -> int:
+        """Atomically claim one per-peer request slot; return wait seconds if denied."""
+        if not identity or cooldown_seconds <= 0:
+            raise ValueError("Invalid cooldown parameters")
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute("CREATE TABLE IF NOT EXISTS peer_cooldown (identity TEXT PRIMARY KEY, last_ts REAL NOT NULL)")
+                row = conn.execute("SELECT last_ts FROM peer_cooldown WHERE identity=?", (identity,)).fetchone()
+                elapsed = now - float(row[0]) if row else cooldown_seconds
+                if elapsed < cooldown_seconds:
+                    conn.execute("ROLLBACK")
+                    return max(1, int(cooldown_seconds - elapsed + 0.999))
+                conn.execute("INSERT INTO peer_cooldown(identity,last_ts) VALUES (?,?) ON CONFLICT(identity) DO UPDATE SET last_ts=excluded.last_ts", (identity, now))
+                conn.execute("COMMIT")
+                return 0
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def reserve(self, day: str, amount: int, daily_limit: int) -> str:
         """Atomically claim estimated tokens before contacting a paid provider."""
         if amount <= 0 or daily_limit <= 0 or amount > daily_limit:
