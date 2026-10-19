@@ -205,6 +205,28 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(status["tokens_reserved"], 300)
         self.assertEqual(status["tokens_remaining"], appmod.LLM_DAILY_TOKEN_CAP - 400)
 
+    def test_live_requests_never_rewrite_legacy_usage_ledger(self):
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        day = appmod.utc_today_key()
+        original = json.dumps({day: {"tokens_used": 250, "identities": {}}})
+        appmod.LLM_USAGE_PATH.write_text(original, encoding="utf-8")
+        with patch.object(appmod, "llm_answer", return_value=("Response one", 100, 0.01, 70, 30)):
+            result = self.client.post(self.ASK_PATH, json={"question": "What is delivery capability?", "use_llm": True})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(appmod.LLM_USAGE_PATH.read_text(encoding="utf-8"), original)
+        self.assertEqual(SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(day), (350, 0))
+
+    def test_failed_provider_call_preserves_legacy_ledger(self):
+        day = appmod.utc_today_key()
+        original = json.dumps({day: {"tokens_used": 100, "identities": {}}})
+        appmod.LLM_USAGE_PATH.write_text(original, encoding="utf-8")
+        with patch.object(appmod, "llm_answer", side_effect=TimeoutError("provider timeout")):
+            response = self.client.post(self.ASK_PATH, json={"question": "How is cloud delivery managed?", "use_llm": True})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(appmod.LLM_USAGE_PATH.read_text(encoding="utf-8"), original)
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        self.assertEqual(SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(day), (100 + appmod.LLM_RESERVED_TOKENS_PER_REQUEST, 0))
+
     def test_real_ai_request_reserves_and_settles_sqlite_budget(self):
         from backend.app.llm_budget_store import SqliteTokenBudget
         with patch.object(appmod, "enforce_llm_rate_limit", lambda *args: None), patch.object(
@@ -466,10 +488,7 @@ class KnowMeAppTests(TestCase):
             captured["detail_level"] = detail_level
             return "Rewritten answer.", 123, 0.0, 0, 0
 
-        def fake_record(logging_context, tokens_used):
-            captured["tokens_used"] = tokens_used
-
-        with patch.object(appmod, "enforce_llm_rate_limit", fake_budget), patch.object(appmod, "llm_answer", fake_rewrite), patch.object(appmod, "record_llm_usage", fake_record):
+        with patch.object(appmod, "enforce_llm_rate_limit", fake_budget), patch.object(appmod, "llm_answer", fake_rewrite):
             response = self.client.post(
                 self.ASK_PATH,
                 json={"question": "Why is Rob a good fit?", "use_llm": True, "debug": False},
@@ -479,7 +498,8 @@ class KnowMeAppTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["answer_source"], "llm")
         self.assertEqual(payload["answer"], "Rewritten answer.")
-        self.assertEqual(captured["tokens_used"], 123)
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        self.assertEqual(SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(appmod.utc_today_key()), (123, 0))
 
     def test_llm_answer_cache_skips_second_rewrite(self):
         call_count = {"rewrite": 0}
