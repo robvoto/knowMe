@@ -185,6 +185,16 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(appmod.load_llm_usage()["2026-10-19"]["tokens_used"], 45)
         self.assertEqual(list(self.temp_path.glob("*.tmp")), [])
 
+    def test_admin_budget_status_includes_outstanding_reservations(self):
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        store = SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3"))
+        store.import_legacy_floor(appmod.utc_today_key(), 100)
+        store.reserve(appmod.utc_today_key(), 300, appmod.LLM_DAILY_TOKEN_CAP)
+        status = appmod.get_llm_budget_status()
+        self.assertEqual(status["tokens_used"], 100)
+        self.assertEqual(status["tokens_reserved"], 300)
+        self.assertEqual(status["tokens_remaining"], appmod.LLM_DAILY_TOKEN_CAP - 400)
+
     def test_real_ai_request_reserves_and_settles_sqlite_budget(self):
         from backend.app.llm_budget_store import SqliteTokenBudget
         with patch.object(appmod, "enforce_llm_rate_limit", lambda *args: None), patch.object(
