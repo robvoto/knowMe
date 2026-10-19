@@ -24,6 +24,21 @@ class SqliteTokenBudgetTests(unittest.TestCase):
         self.assertEqual(results.count(10), 11)
         self.assertEqual(SqliteTokenBudget(self.path).claim_identity_cooldown("peer:shared", 1011.0, 10), 0)
 
+    def test_combined_cooldown_and_budget_are_atomic(self):
+        from backend.app.llm_budget_store import CooldownActive
+        def attempt(_):
+            try:
+                return self.store.reserve("2026-10-19", 20, 100, identity="peer:combined", now=1000.0, cooldown_seconds=10)
+            except CooldownActive:
+                return None
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(attempt, range(8)))
+        self.assertEqual(sum(item is not None for item in results), 1)
+        self.assertEqual(self.store.totals("2026-10-19"), (0, 20))
+        with self.assertRaises(BudgetExhausted):
+            self.store.reserve("2026-10-19", 90, 100, identity="peer:other", now=1000.0, cooldown_seconds=10)
+        self.assertIsNotNone(self.store.reserve("2026-10-19", 20, 100, identity="peer:other", now=1000.0, cooldown_seconds=10))
+
     def test_reservation_is_atomic_across_connections(self):
         def attempt(_):
             try:
