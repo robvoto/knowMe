@@ -658,6 +658,17 @@ def load_llm_usage() -> LlmUsageState:
         raise RuntimeError("LLM budget malformed; paid requests disabled.")
     state: LlmUsageState = {}
     for key, value in raw.items():
+        # An intact JSON document can still contain damaged or manipulated
+        # accounting values. Never turn malformed usage into a zero balance.
+        if (
+            not isinstance(key, str)
+            or not isinstance(value, dict)
+            or not isinstance(value.get("tokens_used"), int)
+            or isinstance(value["tokens_used"], bool)
+            or value["tokens_used"] < 0
+            or not isinstance(value.get("identities"), dict)
+        ):
+            raise RuntimeError("LLM budget entries malformed; paid requests disabled.")
         state[key] = normalize_llm_day_state(value)
     return state
 
