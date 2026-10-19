@@ -17,6 +17,7 @@ import re
 import json
 import mimetypes
 import hashlib
+import threading
 import time
 import uuid
 import secrets
@@ -508,6 +509,10 @@ LLM_MODEL = "gpt-4.1-mini"
 
 LLM_MAX_OUTPUT_TOKENS = 500
 LLM_CALL_COOLDOWN_SECONDS = 10
+LOGIN_FAILURE_LIMIT = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+_login_attempts: dict[str, list[float]] = {}
+_login_lock = threading.Lock()
 LLM_DAILY_TOKEN_CAP = int(os.getenv("LLM_DAILY_TOKEN_CAP", "50000"))
 LLM_USAGE_PATH = DATA_DIR / "llm_usage.json"
 
@@ -677,11 +682,11 @@ def normalize_llm_day_state(day_state: object) -> LlmDayState:
 
 
 def get_rate_limit_identity(logging_context: dict[str, str]) -> str:
-    for key, prefix in (("client_id", "client"), ("client_ip_hash", "ip"), ("session_id", "session")):
-        value = logging_context.get(key, "")
-        if is_meaningful_log_value(value):
-            return f"{prefix}:{value}"
-    return f"request:{logging_context.get('request_id', '-')}"
+    # Never trust visitor-controlled client_id/session_id for cost protection.
+    ip_hash = logging_context.get("client_ip_hash", "")
+    if is_meaningful_log_value(ip_hash):
+        return f"ip:{ip_hash}"
+    return "unidentified"
 
 
 def is_admin_session(request: Request) -> bool:
@@ -864,19 +869,31 @@ def status():
 # ------------------------
 
 @app.post("/api/admin_login")
-def api_admin_login(payload: dict, response: Response):
+def api_admin_login(payload: dict, response: Response, request: Request):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="Admin password is not configured.")
+    # Bound password guesses per observed network peer; do not trust forwarded headers.
+    peer = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _login_lock:
+        attempts = [t for t in _login_attempts.get(peer, []) if now - t < LOGIN_WINDOW_SECONDS]
+        _login_attempts[peer] = attempts
+        if len(attempts) >= LOGIN_FAILURE_LIMIT:
+            raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
     password = (payload.get("password") or "").strip()
     if not password or not secrets.compare_digest(password, ADMIN_PASSWORD):
+        with _login_lock:
+            _login_attempts.setdefault(peer, []).append(now)
         raise HTTPException(status_code=401, detail="Invalid admin password.")
+    with _login_lock:
+        _login_attempts.pop(peer, None)
     log_info("Admin login succeeded.")
     response.set_cookie(
         key=ADMIN_COOKIE_NAME,
         value=build_admin_cookie(),
         httponly=True,
         samesite="strict",
-        secure=False,
+        secure=True,
         max_age=60 * 60 * 8,
     )
     return {"ok": True}
