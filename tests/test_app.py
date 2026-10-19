@@ -168,6 +168,18 @@ class KnowMeAppTests(TestCase):
             self.assertFalse(appmod.validate_admin_cookie(token1))
         self.assertFalse(appmod.validate_admin_cookie("invalid"))
 
+    def test_corrupted_budget_fails_closed(self):
+        appmod.LLM_USAGE_PATH.write_text("{invalid-json", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "paid requests disabled"):
+            appmod.load_llm_usage()
+        response = self.client.post(self.ASK_PATH, json={"question": "Tell me about delivery", "use_llm": True})
+        self.assertEqual(response.status_code, 503)
+
+    def test_budget_write_is_valid_json(self):
+        appmod.save_llm_usage({"2026-10-19": {"tokens_used": 45, "identities": {}}})
+        self.assertEqual(appmod.load_llm_usage()["2026-10-19"]["tokens_used"], 45)
+        self.assertEqual(list(self.temp_path.glob("*.tmp")), [])
+
     def test_paid_request_gate_rejects_overlapping_calls(self):
         self.assertTrue(appmod._LLM_REQUEST_GATE.acquire(blocking=False))
         try:
