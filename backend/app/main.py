@@ -511,6 +511,8 @@ LLM_MODEL = "gpt-4.1-mini"
 
 LLM_MAX_OUTPUT_TOKENS = 500
 LLM_CALL_COOLDOWN_SECONDS = 10
+# Allow only one paid request at a time in this process; fail closed under bursts.
+_LLM_REQUEST_GATE = threading.BoundedSemaphore(value=1)
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_WINDOW_SECONDS = 15 * 60
 _login_attempts: dict[str, list[float]] = {}
@@ -1138,6 +1140,8 @@ def ask(payload: dict, request: Request):
                 "request_id": logging_context["request_id"],
             }
 
+    if not _LLM_REQUEST_GATE.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="AI is busy. Please retry shortly.", headers={"Retry-After": "10"})
     try:
         enforce_llm_rate_limit(request, logging_context)
         answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
@@ -1146,8 +1150,10 @@ def ask(payload: dict, request: Request):
     except HTTPException:
         raise
     except Exception as exc:
-        loud_warning(f"LLM call failed: {exc}")
-        raise HTTPException(status_code=503, detail=f"AI answer failed: {exc}")
+        loud_warning(f"LLM call failed: {type(exc).__name__}")
+        raise HTTPException(status_code=503, detail="AI answer temporarily unavailable.") from exc
+    finally:
+        _LLM_REQUEST_GATE.release()
 
     _print_ask_summary(
         question, source, cache_hit=False,
