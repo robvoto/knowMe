@@ -793,11 +793,8 @@ def enforce_llm_rate_limit(request: Request, logging_context: dict[str, str]) ->
             headers={"Retry-After": "86400"},
         )
 
-    record["last_ts"] = now
-    identities[identity] = record
-    day_state["identities"] = identities
-    state[today] = day_state
-    save_llm_usage(state)
+    # Read legacy throttling data during cutover; SQLite owns all new writes.
+    # Writing JSON here could overwrite another worker's accounting.
 
 
 def reserve_paid_llm_budget(request: Request | None = None, logging_context: dict[str, str] | None = None) -> tuple[SqliteTokenBudget, str]:
@@ -1209,10 +1206,13 @@ def ask(payload: dict, request: Request):
             answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
         except Exception:
             # Provider timeout or ambiguous delivery may still incur costs.
-            budget.settle(reservation, LLM_RESERVED_TOKENS_PER_REQUEST)
+            if not budget.settle(reservation, LLM_RESERVED_TOKENS_PER_REQUEST):
+                loud_warning("AI budget reservation settlement not confirmed.")
             raise
-        budget.settle(reservation, tokens_used)
-        record_llm_usage(logging_context, tokens_used)
+        if not budget.settle(reservation, tokens_used):
+            raise RuntimeError("AI usage reservation could not be settled.")
+        # SQLite is now the sole writer of new spending/cooldown data. The
+        # legacy JSON ledger is read only to migrate historical usage.
         store_cached_answer(question, detail_level, answer, tokens_used)
     except HTTPException:
         raise
