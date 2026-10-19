@@ -668,3 +668,9 @@ Open:
 http://127.0.0.1:8000/
 http://127.0.0.1:8000/admin
 ```
+
+## Security hardening prior to reactivation (19 October 2026)
+
+KnowMe remains subject to normal deployment review; this code change does not deploy AWS or restore DNS. Administrator login now sets a **Secure, HttpOnly, SameSite=Strict** cookie that browsers send only over HTTPS, with a fresh random signed token and an enforced 8-hour server-side expiry. Older fixed-value admin cookies are invalid; log in again. Failed administrator logins are throttled after five failures per observed network peer over 15 minutes (process-local limiter). Ensure HTTPS/proxy routing is correctly configured before production use.
+
+Public paid-LLM request cooldown identity no longer trusts caller-supplied `client_id` or `session_id`; it uses a server-derived, secret-salted peer hash even if optional analytics hashing is disabled. This reduces trivial identity-rotation abuse, but is not a substitute for an external/proxy rate limiter, atomic daily budget reservations or a billing hard cap; those remain prerequisites for confidently opening a paid API to the internet. Consider proxy/peer trust carefully when deploying behind a reverse proxy. Code regression tests added for cookie uniqueness/expiry, failed-login throttling and non-user-controlled rate identity; the local test runner reported 21 tests passing.
