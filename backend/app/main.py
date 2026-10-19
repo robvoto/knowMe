@@ -934,9 +934,13 @@ def api_admin_login(payload: dict, response: Response, request: Request):
 
 
 @app.post("/api/admin_logout")
-def api_admin_logout(response: Response):
+def api_admin_logout(response: Response, request: Request):
+    # Reject cross-site logout attempts and clear the matching secure cookie.
+    origin = request.headers.get("origin")
+    if origin and origin != str(request.base_url).rstrip("/"):
+        raise HTTPException(status_code=403, detail="Invalid request origin.")
     log_info("Admin logout requested.")
-    response.delete_cookie(ADMIN_COOKIE_NAME)
+    response.delete_cookie(ADMIN_COOKIE_NAME, path="/", secure=True, httponly=True, samesite="strict")
     return {"ok": True}
 
 
