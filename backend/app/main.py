@@ -237,6 +237,7 @@ def build_logging_context(request: Request, payload: dict) -> dict[str, str]:
         "referer": sanitize_log_value(referer),
         "user_agent": sanitize_log_value(request.headers.get("user-agent")),
         "client_ip_hash": sanitize_log_value(hash_analytics_value(extract_client_ip(request))),
+        "rate_limit_peer_hash": hashlib.sha256(f"{ADMIN_COOKIE_SECRET}:{extract_client_ip(request) or 'unknown'}".encode("utf-8")).hexdigest()[:24],
     }
 
 
@@ -683,9 +684,10 @@ def normalize_llm_day_state(day_state: object) -> LlmDayState:
 
 def get_rate_limit_identity(logging_context: dict[str, str]) -> str:
     # Never trust visitor-controlled client_id/session_id for cost protection.
-    ip_hash = logging_context.get("client_ip_hash", "")
-    if is_meaningful_log_value(ip_hash):
-        return f"ip:{ip_hash}"
+    peer_hash = logging_context.get("rate_limit_peer_hash", "")
+    if is_meaningful_log_value(peer_hash):
+        return f"peer:{peer_hash}"
+    # Fail closed for callers without a trustworthy network peer.
     return "unidentified"
 
 
