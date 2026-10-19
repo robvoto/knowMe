@@ -216,6 +216,13 @@ class KnowMeAppTests(TestCase):
             response = self.client.post(self.ASK_PATH, json={"question": "Explain cloud projects", "use_llm": True})
         self.assertEqual(response.status_code, 429)
 
+    def test_oversized_model_context_never_calls_provider(self):
+        with patch.object(appmod, "CV_TEXT", "X" * 25000), patch.object(
+            appmod.client.responses, "create", side_effect=AssertionError("provider must not be called")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "input too large"):
+                appmod.llm_answer("Explain delivery")
+
     def test_paid_request_gate_rejects_overlapping_calls(self):
         self.assertTrue(appmod._LLM_REQUEST_GATE.acquire(blocking=False))
         try:
