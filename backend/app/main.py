@@ -722,12 +722,16 @@ def get_llm_budget_status() -> LlmBudgetStatus:
     today = utc_today_key()
     state = load_llm_usage()
     day_state = normalize_llm_day_state(state.get(today))
-    used = coerce_int(day_state["tokens_used"])
+    legacy_used = coerce_int(day_state["tokens_used"])
+    sqlite_spent, sqlite_reserved = SqliteTokenBudget(LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(today)
+    # The ledger imported the historical floor; avoid counting it twice.
+    used = max(legacy_used, sqlite_spent)
     return {
         "day": today,
         "daily_cap": LLM_DAILY_TOKEN_CAP,
         "tokens_used": used,
-        "tokens_remaining": max(0, LLM_DAILY_TOKEN_CAP - used),
+        "tokens_reserved": sqlite_reserved,
+        "tokens_remaining": max(0, LLM_DAILY_TOKEN_CAP - used - sqlite_reserved),
         "budget_file": get_file_metadata(LLM_USAGE_PATH),
     }
 
