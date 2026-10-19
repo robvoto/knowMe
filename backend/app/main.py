@@ -1188,5 +1188,7 @@ def ask(payload: dict, request: Request):
 
 
 if __name__ == "__main__":
-    print("\nStarting KnowMe server at http://localhost:8000 ...")
-    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Developer entry point must never expose the app to LAN/Internet by default.
+    # Production deployments use the independently configured service and reverse proxy.
+    print("\nStarting KnowMe local server at http://127.0.0.1:8000 ...")
+    uvicorn.run("backend.app.main:app", host="127.0.0.1", port=8000, reload=False)
