@@ -150,6 +150,23 @@ class KnowMeAppTests(TestCase):
             self.assertFalse(appmod.validate_admin_cookie(token1))
         self.assertFalse(appmod.validate_admin_cookie("invalid"))
 
+    def test_paid_request_gate_rejects_overlapping_calls(self):
+        self.assertTrue(appmod._LLM_REQUEST_GATE.acquire(blocking=False))
+        try:
+            response = self.client.post(self.ASK_PATH, json={"question": "Describe a project", "use_llm": True})
+            self.assertEqual(response.status_code, 429)
+            self.assertIn("busy", response.json()["detail"].lower())
+        finally:
+            appmod._LLM_REQUEST_GATE.release()
+
+    def test_paid_request_gate_released_after_model_error(self):
+        with patch.object(appmod, "enforce_llm_rate_limit", lambda *args: None), patch.object(appmod, "llm_answer", side_effect=RuntimeError("provider-internal-secret")):
+            response = self.client.post(self.ASK_PATH, json={"question": "Explain a project", "use_llm": True})
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("provider-internal-secret", response.text)
+        self.assertTrue(appmod._LLM_REQUEST_GATE.acquire(blocking=False))
+        appmod._LLM_REQUEST_GATE.release()
+
     def test_admin_login_rate_limit(self):
         appmod._login_attempts.clear()
         try:
