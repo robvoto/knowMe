@@ -118,6 +118,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="knowMe API", lifespan=lifespan)
+
+@app.middleware("http")
+async def security_response_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if request.url.path.startswith("/api/admin") or request.url.path == "/admin":
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 mimetypes.add_type("application/javascript", ".js")
 
 # ------------------------
