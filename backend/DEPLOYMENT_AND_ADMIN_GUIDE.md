@@ -716,3 +716,7 @@ Before contacting OpenAI, KnowMe constructs the exact model instructions and inp
 ### Admin budget visibility for outstanding AI requests (19 October 2026)
 
 `get_llm_budget_status()` reports SQLite `tokens_reserved` alongside `tokens_used`, and subtracts both from `tokens_remaining`. It uses the larger of the legacy JSON spent total and SQLite spent total rather than adding them, since historical JSON usage is already imported as a floor. A regression test verifies that pending reservations are shown; the full local suite passed 38 tests (exit code 0). This does not replace token-cost calibration, transactional identity cooldown enforcement or upstream provider billing controls required by issue #4.
+
+### Structured AI usage ledger validation (19 October 2026)
+
+A syntactically valid JSON usage ledger can still have corrupted balances. The loader now rejects malformed daily entries (missing or noninteger `tokens_used`, negative values, or missing `identities`) rather than silently normalising corrupt spending to zero. This fails paid requests closed until the record is repaired. Regression tests cover these cases; the full suite passed 39 tests with exit code 0. Remaining issue #4 work includes validating exact provider token/cost ceilings and transactional cross-process identity throttling.
