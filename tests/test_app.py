@@ -134,6 +134,15 @@ class KnowMeAppTests(TestCase):
         self.assertGreater(payload["cv_length"], 0)
         self.assertGreater(payload["star_length"], 0)
 
+    def test_security_response_headers(self):
+        public = self.client.get("/")
+        self.assertEqual(public.headers.get("x-content-type-options"), "nosniff")
+        self.assertEqual(public.headers.get("x-frame-options"), "DENY")
+        self.assertEqual(public.headers.get("referrer-policy"), "strict-origin-when-cross-origin")
+        admin = self.client.get("/api/admin_state")
+        self.assertEqual(admin.status_code, 401)
+        self.assertEqual(admin.headers.get("cache-control"), "no-store")
+
     def test_admin_routes_require_login(self):
         self.assertEqual(self.client.get("/api/admin_state").status_code, 401)
         self.assertEqual(self.client.get("/api/admin_prompts").status_code, 401)
