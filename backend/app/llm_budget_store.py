@@ -6,6 +6,7 @@ not yet wired into live requests: doing that requires migration and reconciliati
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 import time
 import uuid
 from pathlib import Path
@@ -19,13 +20,17 @@ class SqliteTokenBudget:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
 
+    @contextmanager
     def _connection(self):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
         conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("CREATE TABLE IF NOT EXISTS daily_budget (day TEXT PRIMARY KEY, spent INTEGER NOT NULL DEFAULT 0, reserved INTEGER NOT NULL DEFAULT 0)")
         conn.execute("CREATE TABLE IF NOT EXISTS reservations (id TEXT PRIMARY KEY, day TEXT NOT NULL, amount INTEGER NOT NULL, state TEXT NOT NULL)")
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def reserve(self, day: str, amount: int, daily_limit: int) -> str:
         """Atomically claim estimated tokens before contacting a paid provider."""
