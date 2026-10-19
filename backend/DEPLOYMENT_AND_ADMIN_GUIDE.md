@@ -692,3 +692,9 @@ The paid-LLM usage ledger now fails closed when existing JSON is unreadable or m
 ### Local developer launch exposure (19 October 2026)
 
 Running `python -m backend.app.main` now binds only to `127.0.0.1:8000` with Uvicorn auto-reload disabled. This prevents the development entry point from accidentally opening KnowMe to the LAN or Internet. Production deployment uses its separately configured service and proxy; verify its network binding independently before restoring DNS. A regression test covers this configuration; the full local suite passed 28 tests (exit code 0).
+
+### Shared transactional spending-budget foundation (19 October 2026)
+
+`backend/app/llm_budget_store.py` implements an **independent, not-yet-connected** SQLite transaction store. `reserve()` uses an immediate transaction so simultaneous workers cannot reserve more than the declared token limit; `settle()` is idempotent, releases unused reservations, and charges unexpected excess usage rather than hiding it. Unsettled reservations remain reserved after a crash/restart (conservative fail-closed behaviour). Connections are explicitly closed to prevent Windows database file locks. Four regression tests cover concurrency, duplicate settlement, restart persistence and excess usage; the full local suite passed 32 tests with exit code 0.
+
+**Do not mark public spending protection complete yet.** The existing `main.py` call path still uses JSON usage accounting. Issue #4 requires wiring the transactional reservation into that path, determining a safe worst-case token estimate, reconciling or migrating existing JSON totals without resetting the prior spent budget, and testing multi-process handling and provider timeout/error cases. Until then, do not restore public service solely on the strength of this module.
