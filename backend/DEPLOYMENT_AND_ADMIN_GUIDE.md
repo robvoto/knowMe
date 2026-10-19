@@ -680,3 +680,7 @@ Public paid-LLM request cooldown identity no longer trusts caller-supplied `clie
 Public AI requests now acquire a non-blocking, **per-process one-request semaphore** before the rate-limit check and upstream OpenAI call. Concurrent requests receive HTTP 429 with `Retry-After: 10`, and the semaphore is released even if the provider fails. HTTP 503 responses no longer disclose provider exception text to visitors. Two regression tests verify contention handling and release after an error; the complete local suite passed **23 tests with exit code 0**.
 
 This guard is **not** a global billing hard cap: additional Uvicorn workers/instances each have their own semaphore, and the persisted token total is not an atomic reservation. Before public internet redeployment, verify one-worker operation or add a shared atomic budget store, enforce upstream spending caps and reverse-proxy rate limits, and validate the full deployment security posture. These changes did not reactivate AWS or DNS.
+
+### Cross-origin admin logout protection (19 October 2026)
+
+The admin logout endpoint rejects an explicitly supplied `Origin` that does not match the application base URL and clears the HTTPS-only, HttpOnly, SameSite=Strict session cookie. Verify that the public reverse proxy preserves the canonical HTTPS host/scheme so same-origin logout works in the deployed environment. Tests cover blocked cross-site logout and successful same-origin logout; all 25 local tests passed (exit code 0). This does not replace the remaining public-relaunch proxy and shared-spend checks.
