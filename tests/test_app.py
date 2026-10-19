@@ -180,6 +180,16 @@ class KnowMeAppTests(TestCase):
         response = self.client.post(self.ASK_PATH, json={"question": "Tell me about delivery", "use_llm": True})
         self.assertEqual(response.status_code, 503)
 
+    def test_structurally_corrupt_budget_fails_closed(self):
+        for damaged in (
+            {"2026-10-19": {"tokens_used": "unknown", "identities": {}}},
+            {"2026-10-19": {"tokens_used": -5, "identities": {}}},
+            {"2026-10-19": {"tokens_used": 50}},
+        ):
+            appmod.LLM_USAGE_PATH.write_text(json.dumps(damaged), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "paid requests disabled"):
+                appmod.load_llm_usage()
+
     def test_budget_write_is_valid_json(self):
         appmod.save_llm_usage({"2026-10-19": {"tokens_used": 45, "identities": {}}})
         self.assertEqual(appmod.load_llm_usage()["2026-10-19"]["tokens_used"], 45)
