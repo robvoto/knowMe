@@ -688,3 +688,7 @@ The admin logout endpoint rejects an explicitly supplied `Origin` that does not 
 ### Spending ledger corruption protection (19 October 2026)
 
 The paid-LLM usage ledger now fails closed when existing JSON is unreadable or malformed, rather than resetting to zero and permitting further paid requests. Writes stage a unique temporary file and replace the ledger atomically to reduce torn-file corruption. An absent ledger remains valid for first launch. Regression tests cover corrupted JSON and successful atomic replacement; 27 local tests passed with exit code 0. This does **not** solve cross-process spending reservations: KnowMe issue #4 remains open until a shared atomic budget is implemented and concurrency-tested.
+
+### Local developer launch exposure (19 October 2026)
+
+Running `python -m backend.app.main` now binds only to `127.0.0.1:8000` with Uvicorn auto-reload disabled. This prevents the development entry point from accidentally opening KnowMe to the LAN or Internet. Production deployment uses its separately configured service and proxy; verify its network binding independently before restoring DNS. A regression test covers this configuration; the full local suite passed 28 tests (exit code 0).
