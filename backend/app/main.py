@@ -35,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from typing import TypedDict
 
-from .llm_budget_store import BudgetExhausted, SqliteTokenBudget
+from .llm_budget_store import BudgetExhausted, CooldownActive, SqliteTokenBudget
 
 from .config import (
     ADMIN_COOKIE_NAME,
@@ -800,14 +800,16 @@ def enforce_llm_rate_limit(request: Request, logging_context: dict[str, str]) ->
     save_llm_usage(state)
 
 
-def reserve_paid_llm_budget() -> tuple[SqliteTokenBudget, str]:
+def reserve_paid_llm_budget(request: Request | None = None, logging_context: dict[str, str] | None = None) -> tuple[SqliteTokenBudget, str]:
     """Reserve capacity transactionally, importing legacy usage without resetting it."""
     day = utc_today_key()
     legacy = normalize_llm_day_state(load_llm_usage().get(day))["tokens_used"]
     budget = SqliteTokenBudget(LLM_USAGE_PATH.with_suffix(".sqlite3"))
     budget.import_legacy_floor(day, coerce_int(legacy))
     try:
-        reservation = budget.reserve(day, LLM_RESERVED_TOKENS_PER_REQUEST, LLM_DAILY_TOKEN_CAP)
+        reservation = budget.reserve(\n            day, LLM_RESERVED_TOKENS_PER_REQUEST, LLM_DAILY_TOKEN_CAP,\n            identity=get_rate_limit_identity(logging_context) if request is not None and logging_context is not None and not is_admin_session(request) else None,\n            now=time.time(), cooldown_seconds=LLM_CALL_COOLDOWN_SECONDS,\n        )
+    except CooldownActive as exc:
+        raise HTTPException(status_code=429, detail="Please wait before asking again.", headers={"Retry-After": str(exc.seconds)}) from exc
     except BudgetExhausted as exc:
         raise HTTPException(status_code=429, detail="Daily AI budget unavailable.", headers={"Retry-After": "3600"}) from exc
     return budget, reservation
@@ -1198,18 +1200,7 @@ def ask(payload: dict, request: Request):
         raise HTTPException(status_code=429, detail="AI is busy. Please retry shortly.", headers={"Retry-After": "10"})
     try:
         enforce_llm_rate_limit(request, logging_context)
-        budget, reservation = reserve_paid_llm_budget()
-        if not is_admin_session(request):
-            wait = budget.claim_identity_cooldown(
-                get_rate_limit_identity(logging_context), time.time(), LLM_CALL_COOLDOWN_SECONDS
-            )
-            if wait:
-                # No provider call was made; release reservation without billing.
-                budget.settle(reservation, 0)
-                raise HTTPException(
-                    status_code=429, detail="Please wait before asking again.",
-                    headers={"Retry-After": str(wait)},
-                )
+        budget, reservation = reserve_paid_llm_budget(request, logging_context)
         try:
             answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
         except Exception:
