@@ -55,7 +55,7 @@ class KnowMeAppTests(TestCase):
         appmod.PROMPT_OVERRIDES = {key: "" for key in appmod.PROMPT_KEYS}
         appmod.ANSWER_CACHE = {}
 
-        self.client = TestClient(appmod.app)
+        self.client = TestClient(appmod.app, base_url="https://testserver")
         self.client.__enter__()
 
     def tearDown(self):
