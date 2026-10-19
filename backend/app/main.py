@@ -1199,6 +1199,17 @@ def ask(payload: dict, request: Request):
     try:
         enforce_llm_rate_limit(request, logging_context)
         budget, reservation = reserve_paid_llm_budget()
+        if not is_admin_session(request):
+            wait = budget.claim_identity_cooldown(
+                get_rate_limit_identity(logging_context), time.time(), LLM_CALL_COOLDOWN_SECONDS
+            )
+            if wait:
+                # No provider call was made; release reservation without billing.
+                budget.settle(reservation, 0)
+                raise HTTPException(
+                    status_code=429, detail="Please wait before asking again.",
+                    headers={"Retry-After": str(wait)},
+                )
         try:
             answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
         except Exception:
