@@ -720,3 +720,9 @@ Before contacting OpenAI, KnowMe constructs the exact model instructions and inp
 ### Structured AI usage ledger validation (19 October 2026)
 
 A syntactically valid JSON usage ledger can still have corrupted balances. The loader now rejects malformed daily entries (missing or noninteger `tokens_used`, negative values, or missing `identities`) rather than silently normalising corrupt spending to zero. This fails paid requests closed until the record is repaired. Regression tests cover these cases; the full suite passed 39 tests with exit code 0. Remaining issue #4 work includes validating exact provider token/cost ceilings and transactional cross-process identity throttling.
+
+### Cross-process public AI cooldown (19 October 2026)
+
+The public `/api/ask` path now uses `SqliteTokenBudget.claim_identity_cooldown()` to claim a per-peer cooldown through a SQLite `BEGIN IMMEDIATE` transaction before calling the paid provider. Contending processes on the **same SQLite database** cannot simultaneously claim the same identity's slot. Admin sessions retain their existing exemption. Rejected cooldown requests settle any unused reserved tokens at zero; the existing JSON-backed throttle remains as a compatibility check. Concurrency regression testing and the full local suite passed (40 tests, exit code 0).
+
+**Remaining:** This does not coordinate separate hosts/databases. The legacy JSON write path is still non-atomic, and provider billing/token limits and production proxy validation remain open. Do not consider issue #4 or public relaunch complete solely from this change.
