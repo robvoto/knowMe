@@ -35,6 +35,8 @@ from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from typing import TypedDict
 
+from .llm_budget_store import BudgetExhausted, SqliteTokenBudget
+
 from .config import (
     ADMIN_COOKIE_NAME,
     BACKEND_DIR,
@@ -530,6 +532,8 @@ _login_attempts: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
 LLM_DAILY_TOKEN_CAP = int(os.getenv("LLM_DAILY_TOKEN_CAP", "50000"))
 LLM_USAGE_PATH = DATA_DIR / "llm_usage.json"
+# A generous pre-call reservation protects against concurrent worker overspend.
+LLM_RESERVED_TOKENS_PER_REQUEST = 12000
 
 
 def normalize_prompt_values(raw: object, source: str) -> dict[str, str]:
@@ -779,6 +783,19 @@ def enforce_llm_rate_limit(request: Request, logging_context: dict[str, str]) ->
     day_state["identities"] = identities
     state[today] = day_state
     save_llm_usage(state)
+
+
+def reserve_paid_llm_budget() -> tuple[SqliteTokenBudget, str]:
+    """Reserve capacity transactionally, importing legacy usage without resetting it."""
+    day = utc_today_key()
+    legacy = normalize_llm_day_state(load_llm_usage().get(day))["tokens_used"]
+    budget = SqliteTokenBudget(LLM_USAGE_PATH.with_suffix(".sqlite3"))
+    budget.import_legacy_floor(day, coerce_int(legacy))
+    try:
+        reservation = budget.reserve(day, LLM_RESERVED_TOKENS_PER_REQUEST, LLM_DAILY_TOKEN_CAP)
+    except BudgetExhausted as exc:
+        raise HTTPException(status_code=429, detail="Daily AI budget unavailable.", headers={"Retry-After": "3600"}) from exc
+    return budget, reservation
 
 
 def llm_answer(question: str, detail_level: str = "concise") -> tuple[str, int, float, int, int]:
@@ -1164,7 +1181,14 @@ def ask(payload: dict, request: Request):
         raise HTTPException(status_code=429, detail="AI is busy. Please retry shortly.", headers={"Retry-After": "10"})
     try:
         enforce_llm_rate_limit(request, logging_context)
-        answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
+        budget, reservation = reserve_paid_llm_budget()
+        try:
+            answer, tokens_used, llm_elapsed, in_t, out_t = llm_answer(question, detail_level)
+        except Exception:
+            # Provider timeout or ambiguous delivery may still incur costs.
+            budget.settle(reservation, LLM_RESERVED_TOKENS_PER_REQUEST)
+            raise
+        budget.settle(reservation, tokens_used)
         record_llm_usage(logging_context, tokens_used)
         store_cached_answer(question, detail_level, answer, tokens_used)
     except HTTPException:
