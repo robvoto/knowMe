@@ -13,6 +13,17 @@ class SqliteTokenBudgetTests(unittest.TestCase):
         self.path = Path(self.temp.name) / "usage.sqlite3"
         self.store = SqliteTokenBudget(self.path)
 
+    def test_cross_connection_peer_cooldown_is_atomic(self):
+        def attempt(_):
+            store = SqliteTokenBudget(self.path)
+            return store.claim_identity_cooldown("peer:shared", 1000.0, 10)
+
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            results = list(pool.map(attempt, range(12)))
+        self.assertEqual(results.count(0), 1)
+        self.assertEqual(results.count(10), 11)
+        self.assertEqual(SqliteTokenBudget(self.path).claim_identity_cooldown("peer:shared", 1011.0, 10), 0)
+
     def test_reservation_is_atomic_across_connections(self):
         def attempt(_):
             try:
