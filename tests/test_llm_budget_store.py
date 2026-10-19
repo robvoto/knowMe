@@ -47,9 +47,7 @@ class SqliteTokenBudgetTests(unittest.TestCase):
         # A failed budget reservation must not mark this visitor as rate-limited.
         self.assertEqual(self.store.claim_identity_cooldown("peer:retry", 1000.0, 10), 0)
         with self.assertRaises(CooldownActive):
-            self.store.claim_identity_cooldown("peer:retry", 1000.0, 10) or self.store.reserve(
-                "2026-10-19", 1, 100, identity="peer:retry", now=1000.0, cooldown_seconds=10
-            )
+            self.store.reserve("2026-10-19", 1, 100, identity="peer:retry", now=1000.0, cooldown_seconds=10)
 
     def test_reservation_is_atomic_across_connections(self):
         def attempt(_):
