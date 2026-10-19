@@ -143,6 +143,15 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(admin.status_code, 401)
         self.assertEqual(admin.headers.get("cache-control"), "no-store")
 
+    def test_logout_rejects_cross_site_origin(self):
+        self.login()
+        blocked = self.client.post("/api/admin_logout", headers={"Origin": "https://attacker.example"})
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(self.client.get("/api/admin_state").status_code, 200)
+        allowed = self.client.post("/api/admin_logout", headers={"Origin": "https://testserver"})
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(self.client.get("/api/admin_state").status_code, 401)
+
     def test_admin_routes_require_login(self):
         self.assertEqual(self.client.get("/api/admin_state").status_code, 401)
         self.assertEqual(self.client.get("/api/admin_prompts").status_code, 401)
