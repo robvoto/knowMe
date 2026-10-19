@@ -32,6 +32,28 @@ class SqliteTokenBudget:
         finally:
             conn.close()
 
+    def import_legacy_floor(self, day: str, legacy_spent: int) -> None:
+        """Safely import prior JSON usage without lowering an existing SQLite total.
+
+        Repeatable under concurrent workers: max() avoids double-charging an
+        already-imported day while never resetting a larger settled total.
+        Call only during a controlled cutover with legacy writers stopped.
+        """
+        if not isinstance(legacy_spent, int) or isinstance(legacy_spent, bool) or legacy_spent < 0:
+            raise ValueError("Legacy spent tokens must be a nonnegative integer")
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute("INSERT OR IGNORE INTO daily_budget(day) VALUES (?)", (day,))
+                conn.execute(
+                    "UPDATE daily_budget SET spent=MAX(spent, ?) WHERE day=?",
+                    (legacy_spent, day),
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def reserve(self, day: str, amount: int, daily_limit: int) -> str:
         """Atomically claim estimated tokens before contacting a paid provider."""
         if amount <= 0 or daily_limit <= 0 or amount > daily_limit:
