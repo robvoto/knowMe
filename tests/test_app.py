@@ -216,6 +216,16 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(appmod.LLM_USAGE_PATH.read_text(encoding="utf-8"), original)
         self.assertEqual(SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(day), (350, 0))
 
+    def test_missing_provider_usage_is_charged_conservatively(self):
+        from backend.app.llm_budget_store import SqliteTokenBudget
+        with patch.object(appmod, "llm_answer", return_value=("Answer with missing provider usage", 0, 0.01, 0, 0)):
+            response = self.client.post(self.ASK_PATH, json={"question": "Describe the delivery programme", "use_llm": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            SqliteTokenBudget(appmod.LLM_USAGE_PATH.with_suffix(".sqlite3")).totals(appmod.utc_today_key()),
+            (appmod.LLM_RESERVED_TOKENS_PER_REQUEST, 0),
+        )
+
     def test_failed_provider_call_preserves_legacy_ledger(self):
         day = appmod.utc_today_key()
         original = json.dumps({day: {"tokens_used": 100, "identities": {}}})
