@@ -39,6 +39,18 @@ class SqliteTokenBudgetTests(unittest.TestCase):
             self.store.reserve("2026-10-19", 90, 100, identity="peer:other", now=1000.0, cooldown_seconds=10)
         self.assertIsNotNone(self.store.reserve("2026-10-19", 20, 100, identity="peer:other", now=1000.0, cooldown_seconds=10))
 
+    def test_exhausted_budget_does_not_consume_peer_cooldown(self):
+        from backend.app.llm_budget_store import CooldownActive
+        self.store.import_legacy_floor("2026-10-19", 95)
+        with self.assertRaises(BudgetExhausted):
+            self.store.reserve("2026-10-19", 10, 100, identity="peer:retry", now=1000.0, cooldown_seconds=10)
+        # A failed budget reservation must not mark this visitor as rate-limited.
+        self.assertEqual(self.store.claim_identity_cooldown("peer:retry", 1000.0, 10), 0)
+        with self.assertRaises(CooldownActive):
+            self.store.claim_identity_cooldown("peer:retry", 1000.0, 10) or self.store.reserve(
+                "2026-10-19", 1, 100, identity="peer:retry", now=1000.0, cooldown_seconds=10
+            )
+
     def test_reservation_is_atomic_across_connections(self):
         def attempt(_):
             try:
