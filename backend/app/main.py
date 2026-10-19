@@ -807,7 +807,11 @@ def reserve_paid_llm_budget(request: Request | None = None, logging_context: dic
     budget = SqliteTokenBudget(LLM_USAGE_PATH.with_suffix(".sqlite3"))
     budget.import_legacy_floor(day, coerce_int(legacy))
     try:
-        reservation = budget.reserve(\n            day, LLM_RESERVED_TOKENS_PER_REQUEST, LLM_DAILY_TOKEN_CAP,\n            identity=get_rate_limit_identity(logging_context) if request is not None and logging_context is not None and not is_admin_session(request) else None,\n            now=time.time(), cooldown_seconds=LLM_CALL_COOLDOWN_SECONDS,\n        )
+        reservation = budget.reserve(
+            day, LLM_RESERVED_TOKENS_PER_REQUEST, LLM_DAILY_TOKEN_CAP,
+            identity=get_rate_limit_identity(logging_context) if request is not None and logging_context is not None and not is_admin_session(request) else None,
+            now=time.time(), cooldown_seconds=LLM_CALL_COOLDOWN_SECONDS,
+        )
     except CooldownActive as exc:
         raise HTTPException(status_code=429, detail="Please wait before asking again.", headers={"Retry-After": str(exc.seconds)}) from exc
     except BudgetExhausted as exc:
