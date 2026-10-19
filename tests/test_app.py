@@ -138,6 +138,33 @@ class KnowMeAppTests(TestCase):
         self.assertEqual(self.client.get("/api/admin_state").status_code, 401)
         self.assertEqual(self.client.get("/api/admin_prompts").status_code, 401)
 
+    def test_admin_cookie_is_secure_unique_and_expires(self):
+        first = self.client.post("/api/admin_login", json={"password": appmod.ADMIN_PASSWORD})
+        second = self.client.post("/api/admin_login", json={"password": appmod.ADMIN_PASSWORD})
+        self.assertIn("secure", first.headers["set-cookie"].lower())
+        token1 = first.cookies.get(appmod.ADMIN_COOKIE_NAME)
+        token2 = second.cookies.get(appmod.ADMIN_COOKIE_NAME)
+        self.assertNotEqual(token1, token2)
+        self.assertTrue(appmod.validate_admin_cookie(token1))
+        with patch.object(appmod.time, "time", return_value=appmod.time.time() + 60 * 60 * 9):
+            self.assertFalse(appmod.validate_admin_cookie(token1))
+        self.assertFalse(appmod.validate_admin_cookie("invalid"))
+
+    def test_admin_login_rate_limit(self):
+        appmod._login_attempts.clear()
+        try:
+            for _ in range(appmod.LOGIN_FAILURE_LIMIT):
+                self.assertEqual(self.client.post("/api/admin_login", json={"password": "wrong"}).status_code, 401)
+            self.assertEqual(self.client.post("/api/admin_login", json={"password": "wrong"}).status_code, 429)
+        finally:
+            appmod._login_attempts.clear()
+
+    def test_cost_limit_ignores_user_supplied_client_id(self):
+        common = {"rate_limit_peer_hash": "trusted-peer"}
+        first = appmod.get_rate_limit_identity({**common, "client_id": "visitor-one"})
+        second = appmod.get_rate_limit_identity({**common, "client_id": "visitor-two"})
+        self.assertEqual(first, second)
+
     def test_admin_login_and_state(self):
         self.login()
         state = self.client.get("/api/admin_state")
