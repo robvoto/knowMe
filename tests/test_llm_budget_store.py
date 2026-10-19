@@ -38,6 +38,19 @@ class SqliteTokenBudgetTests(unittest.TestCase):
             reopened.reserve("2026-10-19", 11, 100)
         self.assertEqual(reopened.totals("2026-10-19"), (0, 90))
 
+    def test_legacy_usage_import_is_idempotent_and_never_resets_spending(self):
+        self.store.import_legacy_floor("2026-10-19", 80)
+        self.store.import_legacy_floor("2026-10-19", 80)
+        self.assertEqual(self.store.totals("2026-10-19"), (80, 0))
+        with self.assertRaises(BudgetExhausted):
+            self.store.reserve("2026-10-19", 21, 100)
+        rid = self.store.reserve("2026-10-19", 20, 100)
+        self.store.settle(rid, 20)
+        self.store.import_legacy_floor("2026-10-19", 80)
+        self.assertEqual(self.store.totals("2026-10-19"), (100, 0))
+        with self.assertRaises(ValueError):
+            self.store.import_legacy_floor("2026-10-19", -1)
+
     def test_provider_overuse_is_never_silently_discarded(self):
         rid = self.store.reserve("2026-10-19", 20, 100)
         self.store.settle(rid, 120)
