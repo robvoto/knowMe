@@ -712,3 +712,7 @@ The main `/api/ask` path now calls `reserve_paid_llm_budget()` before a paid Ope
 ### Paid model input size safeguard (19 October 2026)
 
 Before contacting OpenAI, KnowMe constructs the exact model instructions and input and rejects requests whose combined UTF-8 encoding exceeds 24,000 bytes. This protects against unexpectedly large CV/STAR or prompt content being submitted without a size check. One regression test ensures an oversized request never invokes the paid provider; the complete suite passed 37 tests, exit code 0. **This byte limit does not prove an upper bound on model tokens or dollar cost.** Continue to treat the 12,000-token SQLite reservation as provisional until tokenizer-specific accounting, costs and production limits are verified (issue #4).
+
+### Admin budget visibility for outstanding AI requests (19 October 2026)
+
+`get_llm_budget_status()` reports SQLite `tokens_reserved` alongside `tokens_used`, and subtracts both from `tokens_remaining`. It uses the larger of the legacy JSON spent total and SQLite spent total rather than adding them, since historical JSON usage is already imported as a floor. A regression test verifies that pending reservations are shown; the full local suite passed 38 tests (exit code 0). This does not replace token-cost calibration, transactional identity cooldown enforcement or upstream provider billing controls required by issue #4.
